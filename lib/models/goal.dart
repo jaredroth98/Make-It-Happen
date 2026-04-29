@@ -1,13 +1,17 @@
+enum PrivacyLevel { public, private, hidden }
+
 /// Every goal will share these properties
 abstract class Goal {
   String id;
   String title;
   DateTime createdAt;
+  PrivacyLevel privacy;
 
   Goal({
     required this.id,
     required this.title,
     required this.createdAt,
+    this.privacy = PrivacyLevel.public,
   });
 
   double calculateProgress();
@@ -39,6 +43,7 @@ class ObjectiveGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.privacy,
     this.targetCompletionDate,
     this.checkpoints = const [],
     this.requireSequentialCheckpoints = false,
@@ -76,6 +81,7 @@ class DailyGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.privacy,
     Set<DateTime>? completedDates,
   }) : completedDates = completedDates ?? {};
 
@@ -133,6 +139,7 @@ class AvoidanceGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.privacy,
     Set<DateTime>? failedDates,
     Set<DateTime>? generatedCheatDays,
     this.cheatStrategy = CheatDayStrategy.none,
@@ -209,6 +216,7 @@ class IrregularGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.privacy,
     Set<DateTime>? completedDates,
     required this.scheduleType,
     this.allowedWeekdays,
@@ -255,6 +263,7 @@ class CumulativeGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.privacy,
     required this.targetAmount,
     this.deadline,
     Map<DateTime, double>? progressLog,

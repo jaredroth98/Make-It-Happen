@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart';
+import 'add_goal_screen.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -32,48 +33,70 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
     // The UI
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemCount: _myGoals.length,
-      itemBuilder: (context,index) {
-        final goal = _myGoals[index];
+      body: ListView.builder(
+        padding: const EdgeInsets.all(16.0),
+        itemCount: _myGoals.length,
+        itemBuilder: (context,index) {
+          final goal = _myGoals[index];
 
-        // Wrap each item in a Card
-        return Card(
-          elevation: 2,
-          margin: const EdgeInsets.only(bottom:12.0),
-          child: ListTile(
-            contentPadding: const EdgeInsets.all(16.0),
+          // Wrap each item in a Card
+          return Card(
+            elevation: 2,
+            margin: const EdgeInsets.only(bottom:12.0),
+            child: ListTile(
+              contentPadding: const EdgeInsets.all(16.0),
 
-            // Leading icon changes based on what type of goal it is
-            leading: Icon(
-              goal is DailyGoal ? Icons.calendar_today : Icons.flag,
-              color: Theme.of(context).colorScheme.primary,
-              size: 32,
+              // Leading icon changes based on what type of goal it is
+              leading: Icon(
+                goal is DailyGoal ? Icons.calendar_today : Icons.flag,
+                color: Theme.of(context).colorScheme.primary,
+                size: 32,
+              ),
+
+              title: Text(
+                goal.title,
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+
+              // Subtitle shows the current progress
+              subtitle: Text(
+                'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+
+              // What happens when they click the goal
+              onTap: () {
+                print('Clicked on ${goal.title}!');
+                // TODO: Navigate to the details page
+              },
             ),
+          );
+        },
+      ),
 
-            title: Text(
-              goal.title,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
+      floatingActionButton: FloatingActionButton(
+        // Notice the 'async' keyword. This tells Flutter "This button triggers an action that takes time."
+        onPressed: () async { 
+          // 'await' pauses this specific function until the AddGoalScreen closes
+          final newGoal = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const AddGoalScreen()),
+          );
 
-            // Subtitle shows the current progress
-            subtitle: Text(
-              'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
-              style: TextStyle(color: Colors.grey[700]),
-            ),
-
-            trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-
-            // What happens when they click the goal
-            onTap: () {
-              print('Clicked on ${goal.title}!');
-              // TODO: Navigate to the details page
-            },
-          ),
-        );
-      },
+          // If the user actually created a goal (and didn't just hit the back arrow to cancel)
+          if (newGoal != null && newGoal is Goal) {
+            // setState tells the screen to redraw itself with the new data!
+            setState(() {
+              _myGoals.add(newGoal);
+            });
+          }
+        },
+        child: const Icon(Icons.add),
+      ),
     );
   }
 }
