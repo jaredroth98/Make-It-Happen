@@ -81,7 +81,7 @@ class DailyGoal extends Goal {
 
   // Strips off the time of a date so we only compare Year/Month/Day
   DateTime _normalizeDate(DateTime date) {
-    return DateTime(date.year, date.month, date.date);
+    return DateTime(date.year, date.month, date.day);
   }
 
   // Mark today as done
@@ -114,27 +114,167 @@ class DailyGoal extends Goal {
   }
 }
 
-/// ----------------------------------------
-/// 3. Placeholders
-/// ----------------------------------------
+/// ---------------------------------------------------------
+/// 3. AVOIDANCE GOAL (e.g., No Social Media)
+/// ---------------------------------------------------------
+
+// How are cheat days generated?
+enum CheatDayStrategy { none, specificFrequency, randomFrequency, manual }
 
 class AvoidanceGoal extends Goal {
-  AvoidanceGoal({required super.id, required super.title, required super.createdAt});
+  // Unlike Daily goals, we track when they FAIL, not when they succeed.
+  Set<DateTime> failedDates;
+  Set<DateTime> generatedCheatDays;
+  
+  CheatDayStrategy cheatStrategy;
+  bool hideUpcomingCheatDays;
+
+  AvoidanceGoal({
+    required super.id,
+    required super.title,
+    required super.createdAt,
+    Set<DateTime>? failedDates,
+    Set<DateTime>? generatedCheatDays,
+    this.cheatStrategy = CheatDayStrategy.none,
+    this.hideUpcomingCheatDays = false,
+  }) : failedDates = failedDates ?? {},
+       generatedCheatDays = generatedCheatDays ?? {};
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  void markFailed(DateTime date) {
+    failedDates.add(_normalizeDate(date));
+  }
+
+  bool isCheatDay(DateTime date) {
+    return generatedCheatDays.contains(_normalizeDate(date));
+  }
 
   @override
-  double calculateProgress() => 0.0; // Logic TBD
+  double calculateProgress() {
+    DateTime today = _normalizeDate(DateTime.now());
+    
+    // If it's a cheat day, they get a 100% free pass for today
+    if (isCheatDay(today)) return 1.0; 
+    
+    // Otherwise, they are at 100% UNLESS they explicitly failed today
+    return failedDates.contains(today) ? 0.0 : 1.0; 
+  }
+
+  // Active Streak with "Frozen" Cheat Days
+  int get activeStreak {
+    int streak = 0;
+    DateTime checkDate = _normalizeDate(DateTime.now());
+
+    // Walk backwards. 
+    while (true) {
+      if (isCheatDay(checkDate)) {
+        // Streak is frozen. Do not increment, but do not break. Skip to yesterday.
+        checkDate = checkDate.subtract(const Duration(days: 1));
+        continue;
+      }
+      
+      if (failedDates.contains(checkDate)) {
+        break; // They failed, streak is over.
+      }
+      
+      // They survived the day!
+      streak++;
+      checkDate = checkDate.subtract(const Duration(days: 1));
+    }
+    return streak;
+  }
 }
 
-class CumulativeGoal extends Goal {
-  CumulativeGoal({required super.id, required super.title, required super.createdAt});
+/// ---------------------------------------------------------
+/// 4. IRREGULAR FREQUENCY GOAL (e.g., 3x a week, or every Tuesday)
+/// ---------------------------------------------------------
 
-  @override
-  double calculateProgress() => 0.0; // Logic TBD
-}
+enum IrregularScheduleType { specificDays, calendarPeriod, rollingWindow }
 
 class IrregularGoal extends Goal {
-  IrregularGoal({required super.id, required super.title, required super.createdAt});
+  Set<DateTime> completedDates;
+  IrregularScheduleType scheduleType;
+  
+  // Variables for 'Specific Days' (1 = Monday, 7 = Sunday)
+  List<int>? allowedWeekdays;
+  
+  // Variables for 'Frequencies'
+  int? targetFrequency; // e.g., 5 times
+  int? windowInDays;    // e.g., per 7 days
+
+  IrregularGoal({
+    required super.id,
+    required super.title,
+    required super.createdAt,
+    Set<DateTime>? completedDates,
+    required this.scheduleType,
+    this.allowedWeekdays,
+    this.targetFrequency,
+    this.windowInDays,
+  }) : completedDates = completedDates ?? {};
+
+  DateTime _normalizeDate(DateTime date) {
+    return DateTime(date.year, date.month, date.day);
+  }
+
+  void markCompleted(DateTime date) {
+    completedDates.add(_normalizeDate(date));
+  }
 
   @override
-  double calculateProgress() => 0.0; // Logic TBD
+  double calculateProgress() {
+    // The calculation here will be dynamic based on the scheduleType.
+    // For the MVP, we will return 0.0 until we build the specific window logic.
+    if (completedDates.isEmpty) return 0.0;
+    
+    if (scheduleType == IrregularScheduleType.specificDays) {
+      return completedDates.contains(_normalizeDate(DateTime.now())) ? 1.0 : 0.0;
+    }
+    
+    // Future logic for rolling/calendar windows goes here
+    return 0.5; 
+  }
+}
+
+/// ---------------------------------------------------------
+/// 5. CUMULATIVE GOAL (e.g., Read 500 pages)
+/// ---------------------------------------------------------
+
+class CumulativeGoal extends Goal {
+  double targetAmount;
+  DateTime? deadline;
+  
+  // Instead of a single number, we store a Map of {Date : Amount}.
+  // This allows the user to look back and see EXACTLY what days they made progress.
+  Map<DateTime, double> progressLog;
+
+  CumulativeGoal({
+    required super.id,
+    required super.title,
+    required super.createdAt,
+    required this.targetAmount,
+    this.deadline,
+    Map<DateTime, double>? progressLog,
+  }) : progressLog = progressLog ?? {};
+
+  // Adds up all the entries in the log
+  double get currentTotal {
+    return progressLog.values.fold(0.0, (sum, amount) => sum + amount);
+  }
+
+  void addProgress(DateTime date, double amount) {
+    DateTime normalized = DateTime(date.year, date.month, date.day);
+    // If there is already progress for today, add to it. Otherwise, set it.
+    progressLog[normalized] = (progressLog[normalized] ?? 0.0) + amount;
+  }
+
+  @override
+  double calculateProgress() {
+    if (targetAmount <= 0) return 0.0;
+    // .clamp ensures it never goes above 100% (1.0) visually
+    return (currentTotal / targetAmount).clamp(0.0, 1.0); 
+  }
 }
