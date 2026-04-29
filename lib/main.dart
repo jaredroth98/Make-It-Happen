@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'screens/goals_screen.dart';
 
 // 1. The Spark Plug
 void main() {
@@ -35,11 +36,11 @@ class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
   // These are the "Screens" we will navigate between.
-  static const List<Widget> _screens = [
-    Center(child: Text('Goals Screen UI Goes Here', style: TextStyle(fontSize: 24))),
-    Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
-    Center(child: Text('Accountability UI Goes here', style: TextStyle(fontSize: 24))),
-    Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
+  static List<Widget> _screens = [
+    const GoalsScreen(),
+    const Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
+    const Center(child: Text('Accountability UI Goes here', style: TextStyle(fontSize: 24))),
+    const Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
   ];
 
   // The function that runs when a tab is tapped
