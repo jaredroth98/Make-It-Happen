@@ -41,6 +41,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const GoalsScreen(),
     const Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
     const AccountabilityScreen(),
+    const Center(child: Text("Learn UI goes here", style: TextStyle(fontSize: 24))),
     const Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
   ];
 
@@ -86,6 +87,10 @@ class _MainNavigationState extends State<MainNavigation> {
           BottomNavigationBarItem(
             icon: Icon(Icons.shield_outlined),
             label: 'Accountability',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.menu_book),
+            label: "Learn",
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),

@@ -61,13 +61,51 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
 
-              // Subtitle shows the current progress
+              // Subtitle shows the streak for Dailies, or % for everything else
               subtitle: Text(
-                'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
+                goal is DailyGoal 
+                    ? 'Active Streak: ${goal.activeStreak} Days'
+                    : 'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
                 style: TextStyle(color: Colors.grey[700]),
               ),
 
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              // Quick-Action Buttons for Daily & Avoidance
+              trailing: Builder(
+                builder: (context) {
+                  DateTime today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+                  // Quick Check for Daily Goals
+                  if (goal is DailyGoal) {
+                    bool isDone = goal.completedDates.contains(today);
+                    return IconButton(
+                      icon: Icon(isDone ? Icons.check_circle : Icons.radio_button_unchecked),
+                      color: isDone ? Colors.green : Colors.grey,
+                      onPressed: () {
+                        setState(() {
+                          isDone ? goal.completedDates.remove(today) : goal.markCompleted(DateTime.now());
+                        });
+                      },
+                    );
+                  }
+                  
+                  // Quick Fail for Avoidance Goals
+                  if (goal is AvoidanceGoal) {
+                    bool hasFailed = goal.failedDates.contains(today);
+                    return IconButton(
+                      icon: Icon(hasFailed ? Icons.cancel : Icons.shield_outlined),
+                      color: hasFailed ? Colors.red : Colors.green,
+                      onPressed: () {
+                        setState(() {
+                          hasFailed ? goal.failedDates.remove(today) : goal.markFailed(DateTime.now());
+                        });
+                      },
+                    );
+                  }
+
+                  // Default arrow for Objective, Cumulative, and Irregular goals
+                  return const Icon(Icons.arrow_forward_ios, size: 16);
+                }
+              ),
 
               // What happens when they click the goal
               onTap: () {
