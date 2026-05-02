@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart';
 import 'add_goal_screen.dart';
+import 'goal_details_screen.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -70,8 +71,13 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
               // What happens when they click the goal
               onTap: () {
-                print('Clicked on ${goal.title}!');
-                // TODO: Navigate to the details page
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // Pass the specific goal that was tapped to the new screen
+                    builder: (context) => GoalDetailsScreen(goal: goal),
+                  ),
+                );
               },
             ),
           );
