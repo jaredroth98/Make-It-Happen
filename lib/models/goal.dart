@@ -1,4 +1,16 @@
+import 'package:make_it_happen/models/partner.dart';
+
 enum PrivacyLevel { public, private, hidden }
+
+class GoalPartner {
+  AccountabilityPartner partner;
+  bool hasAcceptedGoal;
+
+  GoalPartner({
+    required this.partner,
+    this.hasAcceptedGoal = false,
+  });
+}
 
 /// Every goal will share these properties
 abstract class Goal {
@@ -6,12 +18,14 @@ abstract class Goal {
   String title;
   DateTime createdAt;
   PrivacyLevel privacy;
+  List<GoalPartner> assignedPartners;
 
   Goal({
     required this.id,
     required this.title,
     required this.createdAt,
     this.privacy = PrivacyLevel.public,
+    this.assignedPartners = const [],
   });
 
   double calculateProgress();
@@ -24,12 +38,14 @@ abstract class Goal {
 class Checkpoint {
   String title;
   bool isCompleted;
-  DateTime? targetDate;  // ? means this can be null (optional)
+  DateTime? targetDate;  // The planned deadline for this step
+  DateTime? completionDate; // The day they actually did it!
 
   Checkpoint({
     required this.title,
     this.isCompleted = false,
     this.targetDate,
+    this.completionDate,
   });
 }
 
@@ -73,49 +89,65 @@ class ObjectiveGoal extends Goal {
 /// ----------------------------------------
 
 class DailyGoal extends Goal {
-  // Instead of a simple boolean, we store every day the user completes the habit
-  // This allows us to build the "green calendar" view
   Set<DateTime> completedDates;
+  DateTime? endDate; // NEW: The optional last day
 
   DailyGoal({
     required super.id,
     required super.title,
     required super.createdAt,
     super.privacy,
+    super.assignedPartners,
     Set<DateTime>? completedDates,
+    this.endDate, // NEW
   }) : completedDates = completedDates ?? {};
 
-  // Strips off the time of a date so we only compare Year/Month/Day
   DateTime _normalizeDate(DateTime date) {
     return DateTime(date.year, date.month, date.day);
   }
 
-  // Mark today as done
   void markCompleted(DateTime date) {
     completedDates.add(_normalizeDate(date));
   }
 
-  // Check if a specific day is done
+  // NEW: Helper to un-check a day
+  void removeCompletion(DateTime date) {
+    completedDates.remove(_normalizeDate(date));
+  }
+
   bool isCompletedOn(DateTime date) {
     return completedDates.contains(_normalizeDate(date));
   }
 
-  // Calculates the current active streak
   int get activeStreak {
     int streak = 0;
-    DateTime checkDate = _normalizeDate(DateTime.now());
+    DateTime today = _normalizeDate(DateTime.now());
+    DateTime checkDate = today;
 
-    // Walk backwards day by day to count the streak
+    // 1. Is today complete?
+    if (isCompletedOn(today)) {
+      streak++;
+      checkDate = checkDate.subtract(const Duration(days: 1)); // Move to yesterday
+    } else {
+      // 2. Today is NOT complete. Let's see if the streak is still alive from yesterday.
+      checkDate = checkDate.subtract(const Duration(days: 1)); // Move to yesterday
+      if (!isCompletedOn(checkDate)) {
+        // They missed yesterday AND haven't done today. Streak is officially broken.
+        return 0;
+      }
+    }
+
+    // 3. Keep counting backwards for all consecutive previous days
     while (isCompletedOn(checkDate)) {
       streak++;
       checkDate = checkDate.subtract(const Duration(days: 1));
     }
+    
     return streak;
   }
 
   @override
   double calculateProgress() {
-    // For a daily goal, progress on the main screen just means "Is it done today?"
     return isCompletedOn(DateTime.now()) ? 1.0 : 0.0;
   }
 }
@@ -140,6 +172,7 @@ class AvoidanceGoal extends Goal {
     required super.title,
     required super.createdAt,
     super.privacy,
+    super.assignedPartners,
     Set<DateTime>? failedDates,
     Set<DateTime>? generatedCheatDays,
     this.cheatStrategy = CheatDayStrategy.none,
@@ -217,6 +250,7 @@ class IrregularGoal extends Goal {
     required super.title,
     required super.createdAt,
     super.privacy,
+    super.assignedPartners,
     Set<DateTime>? completedDates,
     required this.scheduleType,
     this.allowedWeekdays,
@@ -264,6 +298,7 @@ class CumulativeGoal extends Goal {
     required super.title,
     required super.createdAt,
     super.privacy,
+    super.assignedPartners,
     required this.targetAmount,
     this.deadline,
     Map<DateTime, double>? progressLog,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart';
 import 'add_goal_screen.dart';
+import 'goal_details_screen.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -41,6 +42,15 @@ class _GoalsScreenState extends State<GoalsScreen> {
         itemBuilder: (context,index) {
           final goal = _myGoals[index];
 
+          // Determine the correct subtitle text BEFORE drawing the card
+          String subtitleText = 'Progress: ${(goal.calculateProgress() * 100).toInt()}%';
+          if (goal is DailyGoal) {
+            subtitleText = 'Active Streak: ${goal.activeStreak} Days';
+          } else if (goal is ObjectiveGoal) {
+            int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
+            subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
+          }
+          
           // Wrap each item in a Card
           return Card(
             elevation: 2,
@@ -60,18 +70,60 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
 
-              // Subtitle shows the current progress
+              // Subtitle
               subtitle: Text(
-                'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
+                subtitleText,
                 style: TextStyle(color: Colors.grey[700]),
               ),
 
-              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              // Quick-Action Buttons for Daily & Avoidance
+              trailing: Builder(
+                builder: (context) {
+                  DateTime today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+
+                  // Quick Check for Daily Goals
+                  if (goal is DailyGoal) {
+                    bool isDone = goal.completedDates.contains(today);
+                    return IconButton(
+                      icon: Icon(isDone ? Icons.check_circle : Icons.radio_button_unchecked),
+                      color: isDone ? Colors.green : Colors.grey,
+                      onPressed: () {
+                        setState(() {
+                          isDone ? goal.completedDates.remove(today) : goal.markCompleted(DateTime.now());
+                        });
+                      },
+                    );
+                  }
+                  
+                  // Quick Fail for Avoidance Goals
+                  if (goal is AvoidanceGoal) {
+                    bool hasFailed = goal.failedDates.contains(today);
+                    return IconButton(
+                      icon: Icon(hasFailed ? Icons.cancel : Icons.shield_outlined),
+                      color: hasFailed ? Colors.red : Colors.green,
+                      onPressed: () {
+                        setState(() {
+                          hasFailed ? goal.failedDates.remove(today) : goal.markFailed(DateTime.now());
+                        });
+                      },
+                    );
+                  }
+
+                  // Default arrow for Objective, Cumulative, and Irregular goals
+                  return const Icon(Icons.arrow_forward_ios, size: 16);
+                }
+              ),
 
               // What happens when they click the goal
-              onTap: () {
-                print('Clicked on ${goal.title}!');
-                // TODO: Navigate to the details page
+              onTap: () async {
+                await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // Pass the specific goal that was tapped to the new screen
+                    builder: (context) => GoalDetailsScreen(goal: goal),
+                  ),
+                );
+                setState(() {});
               },
             ),
           );

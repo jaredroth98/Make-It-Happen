@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import '../models/goal.dart'; // Import your data models
+import '../models/goal.dart'; 
+import '../models/partner.dart';
 
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
@@ -16,9 +17,13 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   String _selectedGoalType = 'Daily'; 
   PrivacyLevel _selectedPrivacy = PrivacyLevel.public;
 
+  // Holds the partners the user selects for this specific goal
+  final List<AccountabilityPartner> _selectedPartners = [];
+
   // Dynamic States for specific goals
   bool _requireSequential = false; // For Objective Goals
   CheatDayStrategy _cheatStrategy = CheatDayStrategy.none; // For Avoidance
+  DateTime? _dailyEndDate;
 
   // A list of all goal types for the dropdown
   final List<String> _goalTypes = ['Daily', 'Objective', 'Avoidance', 'Irregular', 'Cumulative'];
@@ -91,6 +96,33 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
 
             /// --- 2. DYNAMIC SETTINGS (Changes based on Goal Type) ---
             
+            // DAILY GOAL SETTINGS
+            if (_selectedGoalType == 'Daily') ...[
+              const Text("Daily Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
+              ListTile(
+                title: const Text("Set an End Date (Optional)"),
+                subtitle: Text(_dailyEndDate == null ? "No end date set" : "${_dailyEndDate!.month}/${_dailyEndDate!.day}/${_dailyEndDate!.year}"),
+                trailing: const Icon(Icons.calendar_month),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: DateTime.now(),
+                    firstDate: DateTime.now(),
+                    lastDate: DateTime(2030),
+                  );
+                  if (picked != null) {
+                    setState(() => _dailyEndDate = picked);
+                  }
+                },
+              ),
+              if (_dailyEndDate != null)
+                TextButton(
+                  onPressed: () => setState(() => _dailyEndDate = null), 
+                  child: const Text("Clear Date", style: TextStyle(color: Colors.red))
+                ),
+              const SizedBox(height: 16),
+            ],
+            
             // If they chose Objective, show this section
             if (_selectedGoalType == 'Objective') ...[
               const Text("Objective Settings", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: Colors.blueGrey)),
@@ -124,7 +156,36 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
 
             const SizedBox(height: 40),
 
-            /// --- 3. SAVE BUTTON ---
+            /// --- 3. ACCOUNTABILITY PARTNERS ---
+            
+            const Text("Notify these partners:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8.0, 
+              runSpacing: 4.0, 
+              // We filter the network to ONLY show verified partners!
+              children: myNetwork.where((p) => p.isVerified).map((partner) {
+                final isSelected = _selectedPartners.contains(partner);
+                
+                return FilterChip(
+                  label: Text(partner.firstName),
+                  selected: isSelected,
+                  onSelected: (bool selected) {
+                    setState(() {
+                      if (selected) {
+                        _selectedPartners.add(partner);
+                      } else {
+                        _selectedPartners.remove(partner);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 40),
+            
+            /// --- 4. SAVE BUTTON ---
+            
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -137,11 +198,16 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                   // Fallback in case they leave it completely blank
                   if (title.isEmpty) title = "My New Goal";
 
+                  // Wrap the selected partners with the GoalPartner wrapper (defaulting to hasAcceptedGoal: false)
+                  List<GoalPartner> wrappedPartners = _selectedPartners.map((p) {
+                    return GoalPartner(partner: p, hasAcceptedGoal: false);
+                  }).toList();
+
                   Goal ? createdGoal;
 
                   // 2. Build the correct object based on their selection
                   if (_selectedGoalType == 'Daily') {
-                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy);
+                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, assignedPartners: wrappedPartners, endDate: _dailyEndDate);
                   } else if (_selectedGoalType == 'Objective') {
                     createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential);
                   } else if (_selectedGoalType == 'Avoidance') {
