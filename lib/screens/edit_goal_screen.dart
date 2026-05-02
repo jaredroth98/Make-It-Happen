@@ -248,14 +248,26 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
                   // 2. UPDATE DYNAMIC PROPERTIES
                   if (widget.goal is DailyGoal) {
                     final dailyGoal = widget.goal as DailyGoal;
-                    dailyGoal.endDate = _dailyEndDate; // <--- ADD THIS
+                    dailyGoal.endDate = _dailyEndDate;
                   } else if (widget.goal is ObjectiveGoal) {
                     final objGoal = widget.goal as ObjectiveGoal;
                     objGoal.requireSequentialCheckpoints = _requireSequential;
                     
-                    // Rebuild the checkpoints list from the text controllers
-                    objGoal.checkpoints = _checkpointControllers.map((controller) {
-                      return Checkpoint(title: controller.text);
+                    // We take a snapshot of the old checkpoints before we overwrite them
+                    List<Checkpoint> oldCheckpoints = objGoal.checkpoints;
+                    
+                    objGoal.checkpoints = _checkpointControllers.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      String newTitle = entry.value.text;
+                      
+                      // If a checkpoint already existed at this spot, just update the title
+                      if (index < oldCheckpoints.length) {
+                        oldCheckpoints[index].title = newTitle;
+                        return oldCheckpoints[index];
+                      } else {
+                        // If there is no old checkpoint here, they must have clicked "Add Checkpoint"
+                        return Checkpoint(title: newTitle);
+                      }
                     }).toList();
                   } else if (widget.goal is AvoidanceGoal) {
                     final avGoal = widget.goal as AvoidanceGoal;

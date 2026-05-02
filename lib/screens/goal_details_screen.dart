@@ -209,12 +209,33 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                       subtitle: isLocked ? const Text("Complete previous steps first", style: TextStyle(fontSize: 12)) : null,
                       value: cp.isCompleted,
                       activeColor: Colors.green,
-                      onChanged: isLocked ? null : (bool? newValue) {
-                        setState(() {
-                          cp.isCompleted = newValue ?? false;
-                          cp.completionDate = cp.isCompleted ? DateTime.now() : null; 
-                          goal.isGoalCompleted = goal.checkpoints.every((c) => c.isCompleted);
-                        });
+                      // Notice the 'async' keyword so we can await the popup!
+                      onChanged: isLocked ? null : (bool? newValue) async {
+                        if (newValue == true) {
+                          // 1. They are checking the box. Ask for the date!
+                          final pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2020),
+                            lastDate: DateTime(2030),
+                          );
+                          
+                          // 2. If they picked a date (and didn't hit cancel), save it!
+                          if (pickedDate != null) {
+                            setState(() {
+                              cp.isCompleted = true;
+                              cp.completionDate = pickedDate;
+                              goal.isGoalCompleted = goal.checkpoints.every((c) => c.isCompleted);
+                            });
+                          }
+                        } else {
+                          // 3. They are unchecking the box. Clear the data.
+                          setState(() {
+                            cp.isCompleted = false;
+                            cp.completionDate = null;
+                            goal.isGoalCompleted = goal.checkpoints.every((c) => c.isCompleted);
+                          });
+                        }
                       },
                     );
                   }).toList(),

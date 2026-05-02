@@ -42,6 +42,15 @@ class _GoalsScreenState extends State<GoalsScreen> {
         itemBuilder: (context,index) {
           final goal = _myGoals[index];
 
+          // Determine the correct subtitle text BEFORE drawing the card
+          String subtitleText = 'Progress: ${(goal.calculateProgress() * 100).toInt()}%';
+          if (goal is DailyGoal) {
+            subtitleText = 'Active Streak: ${goal.activeStreak} Days';
+          } else if (goal is ObjectiveGoal) {
+            int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
+            subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
+          }
+          
           // Wrap each item in a Card
           return Card(
             elevation: 2,
@@ -61,11 +70,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
 
-              // Subtitle shows the streak for Dailies, or % for everything else
+              // Subtitle
               subtitle: Text(
-                goal is DailyGoal 
-                    ? 'Active Streak: ${goal.activeStreak} Days'
-                    : 'Progress: ${(goal.calculateProgress() * 100).toInt()}%',
+                subtitleText,
                 style: TextStyle(color: Colors.grey[700]),
               ),
 
@@ -108,14 +115,15 @@ class _GoalsScreenState extends State<GoalsScreen> {
               ),
 
               // What happens when they click the goal
-              onTap: () {
-                Navigator.push(
+              onTap: () async {
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     // Pass the specific goal that was tapped to the new screen
                     builder: (context) => GoalDetailsScreen(goal: goal),
                   ),
                 );
+                setState(() {});
               },
             ),
           );
