@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/goals_screen.dart';
+import 'screens/accountability_screen.dart';
 
 // 1. The Spark Plug
 void main() {
@@ -39,7 +40,7 @@ class _MainNavigationState extends State<MainNavigation> {
   static List<Widget> _screens = [
     const GoalsScreen(),
     const Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
-    const Center(child: Text('Accountability UI Goes here', style: TextStyle(fontSize: 24))),
+    const AccountabilityScreen(),
     const Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
   ];
 

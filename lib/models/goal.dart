@@ -1,4 +1,16 @@
+import 'package:make_it_happen/models/partner.dart';
+
 enum PrivacyLevel { public, private, hidden }
+
+class GoalPartner {
+  AccountabilityPartner partner;
+  bool hasAcceptedGoal;
+
+  GoalPartner({
+    required this.partner,
+    this.hasAcceptedGoal = false,
+  });
+}
 
 /// Every goal will share these properties
 abstract class Goal {
@@ -6,12 +18,14 @@ abstract class Goal {
   String title;
   DateTime createdAt;
   PrivacyLevel privacy;
+  List<GoalPartner> assignedPartners;
 
   Goal({
     required this.id,
     required this.title,
     required this.createdAt,
     this.privacy = PrivacyLevel.public,
+    this.assignedPartners = const [],
   });
 
   double calculateProgress();
