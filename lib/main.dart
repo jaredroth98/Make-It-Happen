@@ -4,6 +4,7 @@ import 'screens/accountability_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
+import 'screens/account_screen.dart';
 
 // 1. The Spark Plug
 void main() async {
@@ -51,7 +52,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
     const AccountabilityScreen(),
     const Center(child: Text("Learn UI goes here", style: TextStyle(fontSize: 24))),
-    const Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
+    const AccountScreen(),
   ];
 
   // The function that runs when a tab is tapped
