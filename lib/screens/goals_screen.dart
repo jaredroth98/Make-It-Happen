@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/goal.dart';
 import 'add_goal_screen.dart';
 import 'goal_details_screen.dart';
+import '../services/database_service.dart';
+import '../services/auth_service.dart';
 
 class GoalsScreen extends StatefulWidget {
   const GoalsScreen({super.key});
@@ -11,141 +13,106 @@ class GoalsScreen extends StatefulWidget {
 }
 
 class _GoalsScreenState extends State<GoalsScreen> {
-  // MOCK DATA
-  // This is just temporary, fake data
-  final List<Goal> _myGoals = [
-    DailyGoal(
-      id: 'g1',
-      title: 'Read 10 Pages',
-      createdAt: DateTime.now(),
-    ),
-    ObjectiveGoal(
-      id: 'g2',
-      title: 'Run a Marathon',
-      createdAt: DateTime.now(),
-      requireSequentialCheckpoints: true,
-      checkpoints: [
-        Checkpoint(title: 'Run a 5k'),
-        Checkpoint(title: 'Run a 10k'),
-        Checkpoint(title: 'Run a half marathon'),
-      ],
-    ),
-  ];
-
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(
     // The UI
-      body: ListView.builder(
-        padding: const EdgeInsets.all(16.0),
-        itemCount: _myGoals.length,
-        itemBuilder: (context,index) {
-          final goal = _myGoals[index];
-
-          // Determine the correct subtitle text BEFORE drawing the card
-          String subtitleText = 'Progress: ${(goal.calculateProgress() * 100).toInt()}%';
-          if (goal is DailyGoal) {
-            subtitleText = 'Active Streak: ${goal.activeStreak} Days';
-          } else if (goal is ObjectiveGoal) {
-            int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
-            subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
-          }
+      body: StreamBuilder<List<Goal>>(
+        // 1. Tell it which pipeline to listen to
+        stream: DatabaseService(userId: AuthService().currentUser!.uid).goals,
+        builder: (context, snapshot) {
           
-          // Wrap each item in a Card
-          return Card(
-            elevation: 2,
-            margin: const EdgeInsets.only(bottom:12.0),
-            child: ListTile(
-              contentPadding: const EdgeInsets.all(16.0),
+          // 2. Handle the loading state
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              // Leading icon changes based on what type of goal it is
-              leading: Icon(
-                goal is DailyGoal ? Icons.calendar_today : Icons.flag,
-                color: Theme.of(context).colorScheme.primary,
-                size: 32,
-              ),
+          // 3. Handle errors
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}", style: const TextStyle(color: Colors.red)));
+          }
 
-              title: Text(
-                goal.title,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-              ),
+          // 4. Extract the goals from the pipeline
+          List<Goal> goals = snapshot.data ?? [];
 
-              // Subtitle
-              subtitle: Text(
-                subtitleText,
-                style: TextStyle(color: Colors.grey[700]),
-              ),
+          // 5. Handle empty state
+          if (goals.isEmpty) {
+            return const Center(child: Text("No goals yet! Tap + to Make It Happen.", style: TextStyle(fontSize: 18, color: Colors.grey)));
+          }
 
-              // Quick-Action Buttons for Daily & Avoidance
-              trailing: Builder(
-                builder: (context) {
-                  DateTime today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-
-                  // Quick Check for Daily Goals
-                  if (goal is DailyGoal) {
-                    bool isDone = goal.completedDates.contains(today);
-                    return IconButton(
-                      icon: Icon(isDone ? Icons.check_circle : Icons.radio_button_unchecked),
-                      color: isDone ? Colors.green : Colors.grey,
-                      onPressed: () {
-                        setState(() {
-                          isDone ? goal.completedDates.remove(today) : goal.markCompleted(DateTime.now());
-                        });
-                      },
-                    );
-                  }
-                  
-                  // Quick Fail for Avoidance Goals
-                  if (goal is AvoidanceGoal) {
-                    bool hasFailed = goal.failedDates.contains(today);
-                    return IconButton(
-                      icon: Icon(hasFailed ? Icons.cancel : Icons.shield_outlined),
-                      color: hasFailed ? Colors.red : Colors.green,
-                      onPressed: () {
-                        setState(() {
-                          hasFailed ? goal.failedDates.remove(today) : goal.markFailed(DateTime.now());
-                        });
-                      },
-                    );
-                  }
-
-                  // Default arrow for Objective, Cumulative, and Irregular goals
-                  return const Icon(Icons.arrow_forward_ios, size: 16);
+          // 6. Build the list (This is almost exactly your old code!)
+          return ListView.builder(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: goals.length,
+            itemBuilder: (context, index) {
+              final goal = goals[index];
+              
+              String? subtitleText;
+              if (goal is DailyGoal) {
+                subtitleText = 'Active Streak: ${goal.activeStreak} Days';
+              } else if (goal is ObjectiveGoal) {
+                if (goal.checkpoints.isEmpty) {
+                  subtitleText = null; 
+                } else {
+                  int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
+                  subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
                 }
-              ),
+              }
 
-              // What happens when they click the goal
-              onTap: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    // Pass the specific goal that was tapped to the new screen
-                    builder: (context) => GoalDetailsScreen(goal: goal),
+              return Card(
+                elevation: 2,
+                margin: const EdgeInsets.only(bottom:12.0),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.all(16.0),
+                  leading: Icon(
+                    goal is DailyGoal ? Icons.calendar_today : Icons.flag,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 32,
                   ),
-                );
-                setState(() {});
-              },
-            ),
+                  title: Text(goal.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  subtitle: subtitleText != null ? Text(subtitleText, style: TextStyle(color: Colors.grey[700])) : null,
+                  trailing: Builder(
+                    builder: (context) {
+                      if (goal is DailyGoal) {
+                        bool completedToday = goal.isCompletedOn(DateTime.now());
+                        return IconButton(
+                          icon: Icon(completedToday ? Icons.check_circle : Icons.circle_outlined),
+                          color: completedToday ? Colors.green : Colors.grey,
+                          iconSize: 32,
+                          onPressed: () async {
+                            // OPTIMISTIC UI: Update the local object immediately
+                            completedToday ? goal.removeCompletion(DateTime.now()) : goal.markCompleted(DateTime.now());
+                            // SILENT SYNC: Push the change to the cloud
+                            await DatabaseService(userId: AuthService().currentUser!.uid).saveGoal(goal);
+                          },
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    }
+                  ),
+                  onTap: () {
+                    // No need for 'async/await' or 'setState' here anymore! 
+                    // The StreamBuilder handles redrawing the screen automatically.
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => GoalDetailsScreen(goal: goal)),
+                    );
+                  },
+                ),
+              );
+            },
           );
         },
       ),
 
       floatingActionButton: FloatingActionButton(
-        // Notice the 'async' keyword. This tells Flutter "This button triggers an action that takes time."
-        onPressed: () async { 
-          // 'await' pauses this specific function until the AddGoalScreen closes
-          final newGoal = await Navigator.push(
+        onPressed: () {
+          // Navigate to the Add Goal screen
+          Navigator.push(
             context,
             MaterialPageRoute(builder: (context) => const AddGoalScreen()),
           );
-
-          // If the user actually created a goal (and didn't just hit the back arrow to cancel)
-          if (newGoal != null && newGoal is Goal) {
-            // setState tells the screen to redraw itself with the new data!
-            setState(() {
-              _myGoals.add(newGoal);
-            });
-          }
         },
         child: const Icon(Icons.add),
       ),

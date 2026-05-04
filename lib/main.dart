@@ -1,9 +1,19 @@
 import 'package:flutter/material.dart';
 import 'screens/goals_screen.dart';
 import 'screens/accountability_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'screens/login_screen.dart';
+import 'screens/account_screen.dart';
 
 // 1. The Spark Plug
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   runApp(const MakeItHappenApp());
 }
 
@@ -19,7 +29,7 @@ class MakeItHappenApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true, // Modern Google styling
       ),
-      home: const MainNavigation(),
+      home: const LoginScreen(),
     );
   }
 }
@@ -42,7 +52,7 @@ class _MainNavigationState extends State<MainNavigation> {
     const Center(child: Text('Social screen UI goes here', style: TextStyle(fontSize: 24))),
     const AccountabilityScreen(),
     const Center(child: Text("Learn UI goes here", style: TextStyle(fontSize: 24))),
-    const Center(child: Text('Account settings UI goes here', style: TextStyle(fontSize: 24))),
+    const AccountScreen(),
   ];
 
   // The function that runs when a tab is tapped
