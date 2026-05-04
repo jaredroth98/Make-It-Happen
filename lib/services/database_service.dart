@@ -1,0 +1,140 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../models/goal.dart';
+
+class DatabaseService {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final String userId;
+
+  // We require the userId when opening the vault so we always save 
+  // the data to the correct person's account!
+  DatabaseService({required this.userId});
+
+  /// 1. THE PACKAGER (Serialization)
+  /// Translates our custom Dart Goal into a Firestore-friendly Map
+  Map<String, dynamic> _goalToMap(Goal goal) {
+    // These are the universal properties every goal shares
+    Map<String, dynamic> data = {
+      'id': goal.id,
+      'title': goal.title,
+      // Firestore prefers its own 'Timestamp' object over standard DateTimes
+      'createdAt': Timestamp.fromDate(goal.createdAt), 
+      'privacy': goal.privacy.name,
+      'type': goal.runtimeType.toString(), // e.g., saves the string "DailyGoal"
+    };
+
+    // Now we add the specific properties based on what kind of goal it is
+    if (goal is DailyGoal) {
+      data['endDate'] = goal.endDate != null ? Timestamp.fromDate(goal.endDate!) : null;
+      data['completedDates'] = goal.completedDates.map((d) => Timestamp.fromDate(d)).toList();
+      
+    } else if (goal is ObjectiveGoal) {
+      data['targetCompletionDate'] = goal.targetCompletionDate != null ? Timestamp.fromDate(goal.targetCompletionDate!) : null;
+      data['requireSequentialCheckpoints'] = goal.requireSequentialCheckpoints;
+      data['isGoalCompleted'] = goal.isGoalCompleted;
+      
+      // Checkpoints are a list of objects, so we have to package them up too!
+      data['checkpoints'] = goal.checkpoints.map((cp) => {
+        'title': cp.title,
+        'isCompleted': cp.isCompleted,
+        'targetDate': cp.targetDate != null ? Timestamp.fromDate(cp.targetDate!) : null,
+        'completionDate': cp.completionDate != null ? Timestamp.fromDate(cp.completionDate!) : null,
+      }).toList();
+    }
+    
+    // (We will add Avoidance, Irregular, and Cumulative here later!)
+    
+    return data;
+  }
+
+  /// 2. THE SHIPPER
+  /// Sends the packaged map to the Cloud
+  Future<void> saveGoal(Goal goal) async {
+    try {
+      // This builds the exact folder path in the cloud:
+      // users -> [Your UID] -> goals -> [The Goal ID]
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('goals')
+          .doc(goal.id)
+          .set(_goalToMap(goal));
+          
+    } catch (e) {
+      print("Error saving goal: $e");
+    }
+  }
+
+  /// 3. THE UN-PACKAGER (Deserialization)
+  /// Translates Firestore Maps back into Dart Goal objects
+  Goal _goalFromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    
+    // Extract the universal properties
+    String id = data['id'];
+    String title = data['title'];
+    DateTime createdAt = (data['createdAt'] as Timestamp).toDate();
+    
+    // Safely parse the privacy level enum
+    PrivacyLevel privacy = PrivacyLevel.values.firstWhere(
+      (e) => e.name == data['privacy'], 
+      orElse: () => PrivacyLevel.public
+    );
+    
+    String type = data['type'];
+
+    // Rebuild the specific goal type
+    if (type == 'DailyGoal') {
+      DateTime? endDate = data['endDate'] != null ? (data['endDate'] as Timestamp).toDate() : null;
+      
+      Set<DateTime> completedDates = {};
+      if (data['completedDates'] != null) {
+        completedDates = (data['completedDates'] as List).map((t) => (t as Timestamp).toDate()).toSet();
+      }
+      
+      return DailyGoal(id: id, title: title, createdAt: createdAt, privacy: privacy, endDate: endDate, completedDates: completedDates);
+      
+    } else if (type == 'ObjectiveGoal') {
+      DateTime? targetCompletionDate = data['targetCompletionDate'] != null ? (data['targetCompletionDate'] as Timestamp).toDate() : null;
+      
+      List<Checkpoint> checkpoints = [];
+      if (data['checkpoints'] != null) {
+        checkpoints = (data['checkpoints'] as List).map((cp) {
+          return Checkpoint(
+            title: cp['title'],
+            isCompleted: cp['isCompleted'] ?? false,
+            targetDate: cp['targetDate'] != null ? (cp['targetDate'] as Timestamp).toDate() : null,
+            completionDate: cp['completionDate'] != null ? (cp['completionDate'] as Timestamp).toDate() : null,
+          );
+        }).toList();
+      }
+
+      return ObjectiveGoal(
+        id: id, 
+        title: title, 
+        createdAt: createdAt, 
+        privacy: privacy, 
+        targetCompletionDate: targetCompletionDate, 
+        requireSequentialCheckpoints: data['requireSequentialCheckpoints'] ?? false, 
+        isGoalCompleted: data['isGoalCompleted'] ?? false, 
+        checkpoints: checkpoints
+      );
+    }
+    
+    // (We will add Avoidance, Irregular, etc. later. Defaulting to Daily for safety)
+    return DailyGoal(id: id, title: title, createdAt: createdAt);
+  }
+
+  /// 4. THE LIVE STREAM
+  /// Constantly listens to the user's 'goals' folder
+  Stream<List<Goal>> get goals {
+    return _db
+        .collection('users')
+        .doc(userId)
+        .collection('goals')
+        .snapshots() // This is the magic pipeline!
+        .map((snapshot) {
+          // Whenever data flows through the pipe, unpack every document into a Goal list
+          return snapshot.docs.map((doc) => _goalFromFirestore(doc)).toList();
+        });
+  }
+}

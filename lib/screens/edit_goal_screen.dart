@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart';
 import '../models/partner.dart';
+import '../services/database_service.dart';
+import '../services/auth_service.dart';
 
 class EditGoalScreen extends StatefulWidget {
   final Goal goal;
@@ -222,7 +224,7 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   widget.goal.title = _titleController.text;
                   widget.goal.privacy = _selectedPrivacy;
                   widget.goal.assignedPartners = _selectedPartners.map((p) => GoalPartner(partner: p, hasAcceptedGoal: false)).toList();
@@ -254,7 +256,16 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
                     (widget.goal as AvoidanceGoal).cheatStrategy = _cheatStrategy;
                   }
 
-                  Navigator.pop(context, true); 
+                  final user = AuthService().currentUser;
+                  
+                  if (user != null) {
+                    // Push the updated goal back to the exact same document in the cloud!
+                    await DatabaseService(userId: user.uid).saveGoal(widget.goal);
+                  }
+
+                  if (context.mounted) {
+                    Navigator.pop(context, true); 
+                  }
                 },
                 child: const Text('Save Changes', style: TextStyle(fontSize: 18)),
               ),

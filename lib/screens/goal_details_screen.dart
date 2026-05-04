@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../models/goal.dart';
 import 'edit_goal_screen.dart';
+import '../services/database_service.dart';
+import '../services/auth_service.dart';
 
 class GoalDetailsScreen extends StatefulWidget {
   final Goal goal;
@@ -77,7 +79,7 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
             child: const Text("Cancel")
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               setState(() {
                 if (isCompleted) {
                   dailyGoal.removeCompletion(date);
@@ -85,7 +87,13 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                   dailyGoal.markCompleted(date);
                 }
               });
-              Navigator.pop(context); 
+
+              final user = AuthService().currentUser;
+              if (user != null) {
+                await DatabaseService(userId: user.uid).saveGoal(dailyGoal);
+              }
+
+              if (context.mounted) Navigator.pop(context);
             },
             child: const Text("Confirm"),
           ),
@@ -214,10 +222,14 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                   activeColor: Colors.green,
                   onChanged: (goal.requireSequentialCheckpoints && !goal.checkpoints.every((c) => c.isCompleted))
                       ? null
-                      : (bool? newValue) {
+                      : (bool? newValue) async {
                           setState(() {
                             goal.isGoalCompleted = newValue ?? false;
                           });
+                          final user = AuthService().currentUser;
+                          if (user != null) {
+                            await DatabaseService(userId: user.uid).saveGoal(goal);
+                          }
                         },
                 ),
               ),
@@ -260,7 +272,6 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                               setState(() {
                                 cp.isCompleted = true;
                                 cp.completionDate = pickedDate;
-                                // UPDATE: Auto-complete logic removed so the big goal doesn't check itself!
                               });
                             }
                           } else {
@@ -269,6 +280,10 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                               cp.completionDate = null;
                               goal.isGoalCompleted = false;
                             });
+                          }
+                          final user = AuthService().currentUser;
+                          if (user != null) {
+                            await DatabaseService(userId: user.uid).saveGoal(widget.goal);
                           }
                         },
                       );

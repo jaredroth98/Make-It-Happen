@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart'; 
-import '../models/partner.dart'; // Needed to access myNetwork
+import '../models/partner.dart';
+import '../services/database_service.dart';
+import '../services/auth_service.dart';
 
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
@@ -219,7 +221,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   String newId = DateTime.now().millisecondsSinceEpoch.toString();
                   String title = _titleController.text;
                   if (title.isEmpty) title = "My New Goal";
@@ -246,7 +248,18 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                     createdGoal = CumulativeGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, targetAmount: 100, assignedPartners: wrappedPartners); 
                   }
                   
-                  Navigator.pop(context, createdGoal); 
+                  // 1. Grab the currently logged-in user
+                  final user = AuthService().currentUser;
+                  
+                  // 2. If they are logged in and the goal was built successfully, beam it up!
+                  if (user != null && createdGoal != null) {
+                    await DatabaseService(userId: user.uid).saveGoal(createdGoal);
+                  }
+                  
+                  // 3. Return to the main screen
+                  if (context.mounted) {
+                    Navigator.pop(context, createdGoal); 
+                  }
                 },
                 child: const Text('Create Goal', style: TextStyle(fontSize: 18)),
               ),
