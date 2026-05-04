@@ -137,4 +137,63 @@ class DatabaseService {
           return snapshot.docs.map((doc) => _goalFromFirestore(doc)).toList();
         });
   }
+
+  // PARTNER FINDING AND REQUESTS
+  // --- 1. THE SEARCH ENGINE ---
+  // Smartly guesses if the query is an email, code, or username
+  Future<Map<String, dynamic>?> searchUser(String query) async {
+    query = query.trim();
+    QuerySnapshot result;
+
+    try {
+      if (query.contains('@')) {
+        // It's an email
+        result = await _db.collection('users').where('email', isEqualTo: query.toLowerCase()).get();
+      } else if (query.length == 6 && query == query.toUpperCase()) {
+        // It's a partner code
+        result = await _db.collection('users').where('partnerCode', isEqualTo: query).get();
+      } else {
+        // It's a username
+        result = await _db.collection('users').where('username', isEqualTo: query.toLowerCase()).get();
+      }
+
+      if (result.docs.isNotEmpty) {
+        // Prevent users from adding themselves
+        if (result.docs.first.id == userId) return null; 
+        return result.docs.first.data() as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      print("Search error: $e");
+      return null;
+    }
+  }
+
+  // --- 2. THE POSTMAN (Sending the Request) ---
+  Future<void> sendPartnerRequest(String targetUserId, Map<String, dynamic> targetUserData) async {
+    // Grab your own profile data first so we can hand it to the other person
+    final myDoc = await _db.collection('users').doc(userId).get();
+    final myData = myDoc.data()!;
+
+    // 1. Put a receipt in YOUR outbox
+    await _db.collection('users').doc(userId).collection('partners').doc(targetUserId).set({
+      'uid': targetUserId,
+      'displayName': targetUserData['displayName'],
+      'email': targetUserData['email'],
+      'status': 'pending_sent', 
+    });
+
+    // 2. Put the request in THEIR inbox
+    await _db.collection('users').doc(targetUserId).collection('partners').doc(userId).set({
+      'uid': userId,
+      'displayName': myData['displayName'],
+      'email': myData['email'],
+      'status': 'pending_received',
+    });
+  }
+
+  // --- 3. THE PARTNER STREAM ---
+  Stream<QuerySnapshot> get partners {
+    return _db.collection('users').doc(userId).collection('partners').snapshots();
+  }
 }
