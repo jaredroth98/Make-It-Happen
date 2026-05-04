@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import '../main.dart'; // So we can navigate to MainNavigation
+import '../main.dart';
+import 'sign_up_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -46,33 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } else {
       setState(() {
         _errorMessage = "Login failed. Check your email and password.";
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _handleSignUp() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
-    final user = await _authService.signUpWithEmail(
-      _emailController.text.trim(),
-      _passwordController.text.trim(),
-    );
-
-    if (user != null) {
-      // Success! Send them to the main app
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const MainNavigation()),
-        );
-      }
-    } else {
-      setState(() {
-        _errorMessage = "Sign up failed. Password must be at least 6 characters.";
         _isLoading = false;
       });
     }
@@ -152,9 +126,57 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 16),
                 
-                // Sign Up Button
+                // FORGOT PASSWORD BUTTON
                 TextButton(
-                  onPressed: _handleSignUp,
+                  onPressed: () {
+                    // Show a quick popup asking for their email
+                    showDialog(
+                      context: context,
+                      builder: (context) {
+                        final resetEmailController = TextEditingController();
+                        return AlertDialog(
+                          title: const Text("Reset Password"),
+                          content: TextField(
+                            controller: resetEmailController,
+                            decoration: const InputDecoration(hintText: "Enter your email"),
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text("Cancel"),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                final email = resetEmailController.text.trim();
+                                if (email.isNotEmpty) {
+                                  await _authService.sendPasswordResetEmail(email);
+                                  if (context.mounted) {
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text("Reset email sent to $email")),
+                                    );
+                                  }
+                                }
+                              },
+                              child: const Text("Send Email"),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                  child: const Text("Forgot Password?", style: TextStyle(color: Colors.grey)),
+                ),
+                
+                // Sign Up Navigation Button
+                TextButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                    );
+                  },
                   child: const Text("Don't have an account? Sign Up"),
                 ),
               ]
