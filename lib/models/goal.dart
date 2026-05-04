@@ -60,6 +60,7 @@ class ObjectiveGoal extends Goal {
     required super.title,
     required super.createdAt,
     super.privacy,
+    super.assignedPartners,
     this.targetCompletionDate,
     this.checkpoints = const [],
     this.requireSequentialCheckpoints = false,

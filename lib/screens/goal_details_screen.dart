@@ -45,7 +45,6 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     return "${date.month}/${date.day}/${date.year}";
   }
 
-  // NEW: Helper function to calculate and format the 10-day countdown
   String _getCountdownText(DateTime endDate) {
     DateTime today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
     DateTime end = DateTime(endDate.year, endDate.month, endDate.day);
@@ -59,7 +58,7 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     } else if (daysRemaining < 0) {
       return " (Finished)";
     }
-    return ""; // Return nothing if it's more than 10 days away
+    return ""; 
   }
 
   void _showToggleDateDialog(DateTime date, DailyGoal dailyGoal) {
@@ -144,13 +143,11 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
             ),
             const SizedBox(height: 6),
 
-            // Deadlines / End Dates Display
             if (goal is DailyGoal && goal.endDate != null)
               Row(
                 children: [
                   const Icon(Icons.event_available, size: 16, color: Colors.redAccent),
                   const SizedBox(width: 6),
-                  // NEW: We append the countdown text right after the formatted date!
                   Text("End Date: ${_formatDate(goal.endDate!)}${_getCountdownText(goal.endDate!)}", style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w500)),
                 ],
               ),
@@ -191,57 +188,95 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
               const SizedBox(height: 24),
             ],
 
-            // --- 3. CHECKPOINTS (Objective Goals Only) ---
-            if (goal is ObjectiveGoal && goal.checkpoints.isNotEmpty) ...[
-              const Text("Checkpoints", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            // --- 3. OBJECTIVE GOAL STATUS & CHECKPOINTS ---
+            if (goal is ObjectiveGoal) ...[
+              
+              // THE BIG CHECKMARK
+              const Text("Goal Status", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               Card(
+                color: goal.isGoalCompleted ? Colors.green.shade50 : null,
                 elevation: 2,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: Column(
-                  children: goal.checkpoints.asMap().entries.map((entry) {
-                    int index = entry.key;
-                    Checkpoint cp = entry.value;
-                    bool isLocked = !goal.canCompleteCheckpoint(index);
-
-                    return CheckboxListTile(
-                      title: Text(cp.title, style: TextStyle(decoration: cp.isCompleted ? TextDecoration.lineThrough : null, color: isLocked ? Colors.grey : Colors.black87)),
-                      subtitle: isLocked ? const Text("Complete previous steps first", style: TextStyle(fontSize: 12)) : null,
-                      value: cp.isCompleted,
-                      activeColor: Colors.green,
-                      // Notice the 'async' keyword so we can await the popup!
-                      onChanged: isLocked ? null : (bool? newValue) async {
-                        if (newValue == true) {
-                          // 1. They are checking the box. Ask for the date!
-                          final pickedDate = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime(2030),
-                          );
-                          
-                          // 2. If they picked a date (and didn't hit cancel), save it!
-                          if (pickedDate != null) {
-                            setState(() {
-                              cp.isCompleted = true;
-                              cp.completionDate = pickedDate;
-                              goal.isGoalCompleted = goal.checkpoints.every((c) => c.isCompleted);
-                            });
-                          }
-                        } else {
-                          // 3. They are unchecking the box. Clear the data.
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: goal.isGoalCompleted ? Colors.green : Colors.transparent, 
+                    width: 2
+                  ),
+                ),
+                child: CheckboxListTile(
+                  // UPDATE: Now uses the actual goal title
+                  title: Text(goal.title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+                  subtitle: (goal.requireSequentialCheckpoints && !goal.checkpoints.every((c) => c.isCompleted))
+                      ? const Text("Complete all checkpoints to unlock", style: TextStyle(color: Colors.redAccent))
+                      : null,
+                  value: goal.isGoalCompleted,
+                  activeColor: Colors.green,
+                  onChanged: (goal.requireSequentialCheckpoints && !goal.checkpoints.every((c) => c.isCompleted))
+                      ? null
+                      : (bool? newValue) {
                           setState(() {
-                            cp.isCompleted = false;
-                            cp.completionDate = null;
-                            goal.isGoalCompleted = goal.checkpoints.every((c) => c.isCompleted);
+                            goal.isGoalCompleted = newValue ?? false;
                           });
-                        }
-                      },
-                    );
-                  }).toList(),
+                        },
                 ),
               ),
               const SizedBox(height: 24),
+
+              // THE CHECKPOINTS
+              if (goal.checkpoints.isNotEmpty) ...[
+                const Text("Checkpoints", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Column(
+                    children: goal.checkpoints.asMap().entries.map((entry) {
+                      int index = entry.key;
+                      Checkpoint cp = entry.value;
+                      bool isLocked = !goal.canCompleteCheckpoint(index);
+
+                      return CheckboxListTile(
+                        title: Text(cp.title, style: TextStyle(decoration: cp.isCompleted ? TextDecoration.lineThrough : null, color: isLocked ? Colors.grey : Colors.black87)),
+                        subtitle: (isLocked || cp.targetDate != null) ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (isLocked) const Text("Complete previous steps first", style: TextStyle(fontSize: 12)),
+                            if (cp.targetDate != null) Text("Deadline: ${_formatDate(cp.targetDate!)}", style: const TextStyle(fontSize: 12, color: Colors.redAccent)),
+                          ],
+                        ) : null,
+                        value: cp.isCompleted,
+                        activeColor: Colors.green,
+                        onChanged: isLocked ? null : (bool? newValue) async {
+                          if (newValue == true) {
+                            final pickedDate = await showDatePicker(
+                              context: context,
+                              initialDate: DateTime.now(),
+                              firstDate: DateTime(2020),
+                              lastDate: DateTime(2030),
+                            );
+                            
+                            if (pickedDate != null) {
+                              setState(() {
+                                cp.isCompleted = true;
+                                cp.completionDate = pickedDate;
+                                // UPDATE: Auto-complete logic removed so the big goal doesn't check itself!
+                              });
+                            }
+                          } else {
+                            setState(() {
+                              cp.isCompleted = false;
+                              cp.completionDate = null;
+                              goal.isGoalCompleted = false;
+                            });
+                          }
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
             ],
 
             // --- 4. STREAKS ---
@@ -293,20 +328,42 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
 
                       if (goal is DailyGoal) {
                         bool isEndDate = goal.endDate != null && isSameDay(goal.endDate!, checkDay);
-                        if (isEndDate) return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle);
+                        if (isEndDate) return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle, tooltip: "End Date");
                         if (goal.isCompletedOn(checkDay)) return _buildCalendarMarker(day.day.toString(), Colors.green, BoxShape.circle);
                       }
                       
                       if (goal is ObjectiveGoal) {
-                        bool hasCheckpoint = goal.checkpoints.any((c) => c.completionDate != null && isSameDay(c.completionDate!, checkDay));
-                        bool isDeadline = goal.targetCompletionDate != null && isSameDay(goal.targetCompletionDate!, checkDay);
+                        // 1. Gather all events that land on this specific day
+                        bool isOverallDeadline = goal.targetCompletionDate != null && isSameDay(goal.targetCompletionDate!, checkDay);
+                        var cpDeadlines = goal.checkpoints.where((c) => c.targetDate != null && isSameDay(c.targetDate!, checkDay)).toList();
+                        var cpCompleted = goal.checkpoints.where((c) => c.completionDate != null && isSameDay(c.completionDate!, checkDay)).toList();
 
-                        if (isDeadline) return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle);
-                        if (hasCheckpoint) return _buildCalendarMarker(day.day.toString(), Colors.blue, BoxShape.circle);
+                        // 2. If ANYTHING happened today, build a marker
+                        if (isOverallDeadline || cpDeadlines.isNotEmpty || cpCompleted.isNotEmpty) {
+                          List<String> tooltips = [];
+                          
+                          // Add text to the tooltip for every event that occurred
+                          if (isOverallDeadline) tooltips.add("Overall Deadline");
+                          if (cpDeadlines.isNotEmpty) tooltips.add("Due: ${cpDeadlines.map((c) => c.title).join(', ')}");
+                          if (cpCompleted.isNotEmpty) tooltips.add("Completed: ${cpCompleted.map((c) => c.title).join(', ')}");
+
+                          // 3. Visual Priority: If you completed something today, paint it Blue (Circle). 
+                          // Otherwise, it's just an upcoming deadline, so paint it Red (Square).
+                          Color markerColor = cpCompleted.isNotEmpty ? Colors.blue : Colors.redAccent;
+                          BoxShape markerShape = cpCompleted.isNotEmpty ? BoxShape.circle : BoxShape.rectangle;
+
+                          // Join the tooltips with a separator so they read cleanly on hover!
+                          return _buildCalendarMarker(
+                            day.day.toString(), 
+                            markerColor, 
+                            markerShape, 
+                            tooltip: tooltips.join("  |  ")
+                          );
+                        }
                       }
 
                       if (goal is CumulativeGoal && goal.deadline != null && isSameDay(goal.deadline!, checkDay)) {
-                         return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle);
+                         return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle, tooltip: "Deadline");
                       }
 
                       return null; 
@@ -321,12 +378,20 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
     );
   }
 
-  Widget _buildCalendarMarker(String text, Color color, BoxShape shape) {
-    return Container(
+  // UPDATE: Accepts an optional tooltip string and wraps the marker
+  Widget _buildCalendarMarker(String text, Color color, BoxShape shape, {String? tooltip}) {
+    Widget marker = Container(
       margin: const EdgeInsets.all(6.0),
       decoration: BoxDecoration(color: color, shape: shape, borderRadius: shape == BoxShape.rectangle ? BorderRadius.circular(6) : null),
       child: Center(child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
     );
+
+    if (tooltip != null) {
+      // TooltipTriggerMode.tap ensures it works smoothly on mobile touchscreens
+      return Tooltip(message: tooltip, triggerMode: TooltipTriggerMode.tap, child: marker);
+    }
+    
+    return marker;
   }
 
   Widget _buildStatCard(String label, String value, Color color) {

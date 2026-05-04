@@ -42,13 +42,19 @@ class _GoalsScreenState extends State<GoalsScreen> {
         itemBuilder: (context,index) {
           final goal = _myGoals[index];
 
-          // Determine the correct subtitle text BEFORE drawing the card
-          String subtitleText = 'Progress: ${(goal.calculateProgress() * 100).toInt()}%';
+          String? subtitleText;
+
           if (goal is DailyGoal) {
             subtitleText = 'Active Streak: ${goal.activeStreak} Days';
           } else if (goal is ObjectiveGoal) {
-            int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
-            subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
+            if (goal.checkpoints.isEmpty) {
+              subtitleText = null; // Hide the subtitle if there are no checkpoints!
+            } else {
+              int completedCount = goal.checkpoints.where((c) => c.isCompleted).length;
+              subtitleText = '$completedCount out of ${goal.checkpoints.length} checkpoints completed';
+            }
+          } else {
+            subtitleText = 'Progress: ${(goal.calculateProgress() * 100).toInt()}%';
           }
           
           // Wrap each item in a Card
@@ -71,10 +77,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
               ),
 
               // Subtitle
-              subtitle: Text(
-                subtitleText,
-                style: TextStyle(color: Colors.grey[700]),
-              ),
+              subtitle: subtitleText != null 
+                  ? Text(subtitleText, style: TextStyle(color: Colors.grey[700]))
+                  : null,
 
               // Quick-Action Buttons for Daily & Avoidance
               trailing: Builder(
