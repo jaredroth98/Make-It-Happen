@@ -3,6 +3,7 @@ import 'screens/goals_screen.dart';
 import 'screens/accountability_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'screens/login_screen.dart';
 
 // 1. The Spark Plug
 void main() async {
@@ -27,7 +28,7 @@ class MakeItHappenApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey),
         useMaterial3: true, // Modern Google styling
       ),
-      home: const MainNavigation(),
+      home: const LoginScreen(),
     );
   }
 }
