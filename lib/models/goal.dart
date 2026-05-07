@@ -19,6 +19,8 @@ abstract class Goal {
   DateTime createdAt;
   PrivacyLevel privacy;
   List<GoalPartner> assignedPartners;
+  List<String> supporterIds;
+  Map<String, String> supporterStatuses;
 
   Goal({
     required this.id,
@@ -26,7 +28,10 @@ abstract class Goal {
     required this.createdAt,
     this.privacy = PrivacyLevel.public,
     this.assignedPartners = const [],
-  });
+    List<String>? supporterIds,
+    Map<String, String>? supporterStatuses,
+  })  : this.supporterIds = supporterIds ?? [],
+        this.supporterStatuses = supporterStatuses ?? {};
 
   double calculateProgress();
 }
@@ -65,6 +70,8 @@ class ObjectiveGoal extends Goal {
     this.checkpoints = const [],
     this.requireSequentialCheckpoints = false,
     this.isGoalCompleted = false,
+    super.supporterIds,
+    super.supporterStatuses,
   });
 
   @override
@@ -100,7 +107,9 @@ class DailyGoal extends Goal {
     super.privacy,
     super.assignedPartners,
     Set<DateTime>? completedDates,
-    this.endDate, // NEW
+    this.endDate,
+    super.supporterIds,
+    super.supporterStatuses,
   }) : completedDates = completedDates ?? {};
 
   DateTime _normalizeDate(DateTime date) {
@@ -178,6 +187,8 @@ class AvoidanceGoal extends Goal {
     Set<DateTime>? generatedCheatDays,
     this.cheatStrategy = CheatDayStrategy.none,
     this.hideUpcomingCheatDays = false,
+    super.supporterIds,
+    super.supporterStatuses,
   }) : failedDates = failedDates ?? {},
        generatedCheatDays = generatedCheatDays ?? {};
 
@@ -257,6 +268,8 @@ class IrregularGoal extends Goal {
     this.allowedWeekdays,
     this.targetFrequency,
     this.windowInDays,
+    super.supporterIds,
+    super.supporterStatuses,
   }) : completedDates = completedDates ?? {};
 
   DateTime _normalizeDate(DateTime date) {
@@ -303,6 +316,8 @@ class CumulativeGoal extends Goal {
     required this.targetAmount,
     this.deadline,
     Map<DateTime, double>? progressLog,
+    super.supporterIds,
+    super.supporterStatuses,
   }) : progressLog = progressLog ?? {};
 
   // Adds up all the entries in the log

@@ -13,6 +13,83 @@ class AccountabilityScreen extends StatefulWidget {
 }
 
 class _AccountabilityScreenState extends State<AccountabilityScreen> {
+  // --- DIALOG HELPERS ---
+  void _showActionDialog(BuildContext context, Map<String, dynamic> partnerData, bool alreadyRequested) {
+    final name = partnerData['displayName'] ?? 'Unknown';
+    final targetUid = partnerData['uid'];
+    final status = partnerData['status'];
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        
+        // 1. INCOMING REQUEST
+        if (status == 'pending_received') {
+          return AlertDialog(
+            title: const Text("Partner Request"),
+            content: Text("Are you willing to be an Accountability Partner for $name?"), // Wording updated!
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  await DatabaseService(userId: AuthService().currentUser!.uid).deletePartnerConnection(targetUid, isMySupporter: false);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text("Decline", style: TextStyle(color: Colors.red)),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await DatabaseService(userId: AuthService().currentUser!.uid).acceptPartnerRequest(targetUid);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: const Text("Accept"),
+              ),
+              // We dynamically hide the 3rd option if they are already on our list!
+              if (!alreadyRequested) 
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    final db = DatabaseService(userId: AuthService().currentUser!.uid);
+                    await db.acceptPartnerRequest(targetUid);
+                    await db.sendPartnerRequest(targetUid, partnerData);
+                    if (context.mounted) Navigator.pop(context);
+                  },
+                  child: Text("Accept & Request $name"),
+                ),
+            ],
+          );
+        } 
+        
+        // 2. OUTGOING OR ACCEPTED
+        else {
+          final isAccepted = status == 'accepted';
+          return AlertDialog(
+            title: Text(isAccepted ? "Remove Partner?" : "Cancel Request?"),
+            content: Text(isAccepted 
+              ? "Are you sure you want to remove $name from your Accountability Partners?"
+              : "Are you sure you want to cancel your Accountability Partner request to $name?"),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text("No"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                onPressed: () async {
+                  await DatabaseService(userId: AuthService().currentUser!.uid).deletePartnerConnection(targetUid, isMySupporter: true);
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: Text(isAccepted ? "Remove" : "Cancel Request"),
+              ),
+            ],
+          );
+        }
+      },
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     // 1. The Tab Controller manages the swipe-to-switch logic
@@ -60,37 +137,44 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
   }
 
   // --- SUB-TAB 1: MY PARTNERS (Your exact code!) ---
+  // --- SUB-TAB 1: MY PARTNERS ---
   Widget _buildMyPartnersTab() {
     final currentUserId = AuthService().currentUser?.uid;
     if (currentUserId == null) return const Center(child: Text("Please log in."));
 
     return StreamBuilder<QuerySnapshot>(
-      // Listen to the live relationship pipeline!
       stream: DatabaseService(userId: currentUserId).partners,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (snapshot.hasError) return const Center(child: Text("Error loading partners."));
 
-        if (snapshot.hasError) {
-          return const Center(child: Text("Error loading partners."));
-        }
+        // FILTER: We hide the people you are 'supporting' from this tab!
+        // This keeps the relationship strictly one-way visually.
+        final visiblePartners = snapshot.data?.docs.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          return data['status'] != 'supporting'; 
+        }).toList() ?? [];
 
-        final partnerDocs = snapshot.data?.docs ?? [];
-
-        if (partnerDocs.isEmpty) {
+        if (visiblePartners.isEmpty) {
           return const Center(child: Text("You haven't added any supporters yet."));
         }
         
         return ListView.builder(
           padding: const EdgeInsets.all(16.0),
-          itemCount: partnerDocs.length,
+          itemCount: visiblePartners.length,
           itemBuilder: (context, index) {
-            final partnerData = partnerDocs[index].data() as Map<String, dynamic>;
+            final partnerData = visiblePartners[index].data() as Map<String, dynamic>;
             
+            final uid = partnerData['uid'];
             final name = partnerData['displayName'] ?? 'Unknown';
             final email = partnerData['email'] ?? '';
-            final status = partnerData['status']; // 'accepted', 'pending_sent', or 'pending_received'
+            final status = partnerData['status']; 
+
+            // THE NEW CHECK: See if we already have a 'supporter' document for this person
+            final alreadyRequested = visiblePartners.any((p) {
+              final pData = p.data() as Map<String, dynamic>;
+              return pData['uid'] == uid && (pData['status'] == 'accepted' || pData['status'] == 'pending_sent');
+            });
 
             return Card(
               elevation: 2,
@@ -103,11 +187,14 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
                 title: Text(name, style: const TextStyle(fontWeight: FontWeight.bold)),
                 subtitle: Text(email),
                 
-                // Dynamically build the trailing widget based on the live stream status
-                trailing: _buildStatusWidget(status),
+                // Pass the new boolean here!
+                trailing: _buildStatusWidget(context, status, partnerData, alreadyRequested),
                 
                 onTap: () {
-                  // We will wire up accepting requests here later!
+                  if (status == 'pending_received') {
+                    // Pass it here too!
+                    _showActionDialog(context, partnerData, alreadyRequested);
+                  }
                 },
               ),
             );
@@ -117,21 +204,39 @@ class _AccountabilityScreenState extends State<AccountabilityScreen> {
     );
   }
 
-  // Helper widget to keep the UI clean
-  Widget _buildStatusWidget(String status) {
+  // --- STATUS UI GENERATOR ---
+  Widget _buildStatusWidget(BuildContext context, String status, Map<String, dynamic> partnerData, bool alreadyRequested) {
     if (status == 'accepted') {
-      return const Icon(Icons.verified, color: Colors.green);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.verified, color: Colors.green),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            onPressed: () => _showActionDialog(context, partnerData, alreadyRequested),
+          ),
+        ],
+      );
     } else if (status == 'pending_sent') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(12)),
-        child: const Text("Pending", style: TextStyle(color: Colors.deepOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: Colors.orange.shade100, borderRadius: BorderRadius.circular(12)),
+            child: const Text("Pending", style: TextStyle(color: Colors.deepOrange, fontSize: 12, fontWeight: FontWeight.bold)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+            onPressed: () => _showActionDialog(context, partnerData, alreadyRequested),
+          ),
+        ],
       );
     } else if (status == 'pending_received') {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(12)),
-        child: const Text("Action Required", style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
+        child: const Text("Action Needed", style: TextStyle(color: Colors.blueAccent, fontSize: 12, fontWeight: FontWeight.bold)),
       );
     }
     return const SizedBox.shrink();

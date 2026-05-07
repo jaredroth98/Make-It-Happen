@@ -16,10 +16,11 @@ class DatabaseService {
     Map<String, dynamic> data = {
       'id': goal.id,
       'title': goal.title,
-      // Firestore prefers its own 'Timestamp' object over standard DateTimes
       'createdAt': Timestamp.fromDate(goal.createdAt), 
       'privacy': goal.privacy.name,
-      'type': goal.runtimeType.toString(), // e.g., saves the string "DailyGoal"
+      'type': goal.runtimeType.toString(),
+      'supporterIds': goal.supporterIds,
+      'supporterStatuses': goal.supporterStatuses,
     };
 
     // Now we add the specific properties based on what kind of goal it is
@@ -73,6 +74,8 @@ class DatabaseService {
     String id = data['id'];
     String title = data['title'];
     DateTime createdAt = (data['createdAt'] as Timestamp).toDate();
+    List<String> supporterIds = List<String>.from(data['supporterIds'] ?? []);
+    Map<String, String> supporterStatuses = Map<String, String>.from(data['supporterStatuses'] ?? {});
     
     // Safely parse the privacy level enum
     PrivacyLevel privacy = PrivacyLevel.values.firstWhere(
@@ -91,7 +94,7 @@ class DatabaseService {
         completedDates = (data['completedDates'] as List).map((t) => (t as Timestamp).toDate()).toSet();
       }
       
-      return DailyGoal(id: id, title: title, createdAt: createdAt, privacy: privacy, endDate: endDate, completedDates: completedDates);
+      return DailyGoal(id: id, title: title, createdAt: createdAt, privacy: privacy, endDate: endDate, completedDates: completedDates, supporterIds: supporterIds, supporterStatuses: supporterStatuses);
       
     } else if (type == 'ObjectiveGoal') {
       DateTime? targetCompletionDate = data['targetCompletionDate'] != null ? (data['targetCompletionDate'] as Timestamp).toDate() : null;
@@ -116,12 +119,14 @@ class DatabaseService {
         targetCompletionDate: targetCompletionDate, 
         requireSequentialCheckpoints: data['requireSequentialCheckpoints'] ?? false, 
         isGoalCompleted: data['isGoalCompleted'] ?? false, 
-        checkpoints: checkpoints
+        checkpoints: checkpoints,
+        supporterIds: supporterIds,
+        supporterStatuses: supporterStatuses,
       );
     }
     
     // (We will add Avoidance, Irregular, etc. later. Defaulting to Daily for safety)
-    return DailyGoal(id: id, title: title, createdAt: createdAt);
+    return DailyGoal(id: id, title: title, createdAt: createdAt, supporterIds: supporterIds, supporterStatuses: supporterStatuses);
   }
 
   /// 4. THE LIVE STREAM
@@ -171,20 +176,23 @@ class DatabaseService {
 
   // --- 2. THE POSTMAN (Sending the Request) ---
   Future<void> sendPartnerRequest(String targetUserId, Map<String, dynamic> targetUserData) async {
-    // Grab your own profile data first so we can hand it to the other person
+    // 1. Prevent Duplicates! If you already requested them, silently cancel.
+    final existing = await _db.collection('users').doc(userId).collection('partners').doc('supporter_$targetUserId').get();
+    if (existing.exists) return; 
+
     final myDoc = await _db.collection('users').doc(userId).get();
     final myData = myDoc.data()!;
 
-    // 1. Put a receipt in YOUR outbox
-    await _db.collection('users').doc(userId).collection('partners').doc(targetUserId).set({
+    // 2. Put a receipt in YOUR outbox (They are YOUR supporter)
+    await _db.collection('users').doc(userId).collection('partners').doc('supporter_$targetUserId').set({
       'uid': targetUserId,
       'displayName': targetUserData['displayName'],
       'email': targetUserData['email'],
       'status': 'pending_sent', 
     });
 
-    // 2. Put the request in THEIR inbox
-    await _db.collection('users').doc(targetUserId).collection('partners').doc(userId).set({
+    // 3. Put the request in THEIR inbox (You are THEIR supportee)
+    await _db.collection('users').doc(targetUserId).collection('partners').doc('supportee_$userId').set({
       'uid': userId,
       'displayName': myData['displayName'],
       'email': myData['email'],
@@ -192,8 +200,44 @@ class DatabaseService {
     });
   }
 
+  Future<void> acceptPartnerRequest(String senderId) async {
+    // You are accepting to support them.
+    // 1. Update THEIR outbox
+    await _db.collection('users').doc(senderId).collection('partners').doc('supporter_$userId').update({
+      'status': 'accepted',
+    });
+    // 2. Update YOUR inbox
+    await _db.collection('users').doc(userId).collection('partners').doc('supportee_$senderId').update({
+      'status': 'supporting',
+    });
+  }
+
+  Future<void> deletePartnerConnection(String targetUserId, {required bool isMySupporter}) async {
+    if (isMySupporter) {
+      // I am removing them as my supporter (or canceling my request)
+      await _db.collection('users').doc(userId).collection('partners').doc('supporter_$targetUserId').delete();
+      await _db.collection('users').doc(targetUserId).collection('partners').doc('supportee_$userId').delete();
+    } else {
+      // I am declining their incoming request for me to support them
+      await _db.collection('users').doc(userId).collection('partners').doc('supportee_$targetUserId').delete();
+      await _db.collection('users').doc(targetUserId).collection('partners').doc('supporter_$userId').delete();
+    }
+  }
+
   // --- 3. THE PARTNER STREAM ---
   Stream<QuerySnapshot> get partners {
     return _db.collection('users').doc(userId).collection('partners').snapshots();
+  }
+
+  // This searches EVERY user's goals folder for goals where YOU are a supporter
+  Stream<List<Goal>> get supportedGoals {
+    return _db
+        .collectionGroup('goals') 
+        .where('supporterIds', arrayContains: userId)
+        .snapshots()
+        .map((snapshot) {
+          // Pass the exact 'doc' object to your unpackager! No red lines!
+          return snapshot.docs.map((doc) => _goalFromFirestore(doc)).toList();
+        });
   }
 }

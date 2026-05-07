@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/goal.dart'; 
-import '../models/partner.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
@@ -17,7 +17,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   PrivacyLevel _selectedPrivacy = PrivacyLevel.public;
 
   // Accountability Partners
-  final List<AccountabilityPartner> _selectedPartners = [];
+  final List<Map<String, dynamic>> _selectedPartners = [];
 
   // Dynamic States
   bool _requireSequential = false; 
@@ -202,17 +202,48 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
             /// --- 3. ACCOUNTABILITY PARTNERS ---
             const Text("Notify these partners:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8.0, 
-              runSpacing: 4.0, 
-              children: myNetwork.where((p) => p.isVerified).map((partner) {
-                final isSelected = _selectedPartners.contains(partner);
-                return FilterChip(
-                  label: Text(partner.firstName),
-                  selected: isSelected,
-                  onSelected: (selected) => setState(() { selected ? _selectedPartners.add(partner) : _selectedPartners.remove(partner); }),
+            
+            StreamBuilder<QuerySnapshot>(
+              stream: DatabaseService(userId: AuthService().currentUser!.uid).partners,
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const CircularProgressIndicator();
+
+                // Filter for only 'accepted' (verified) partners
+                final verifiedPartners = snapshot.data!.docs
+                    .map((doc) => doc.data() as Map<String, dynamic>)
+                    .where((data) => data['status'] == 'accepted')
+                    .toList();
+
+                if (verifiedPartners.isEmpty) {
+                  return const Text("No verified partners yet. Add them in the Accountability tab!", style: TextStyle(color: Colors.grey));
+                }
+
+                return Wrap(
+                  spacing: 8.0, 
+                  runSpacing: 4.0, 
+                  children: verifiedPartners.map((partnerMap) {
+                    final uid = partnerMap['uid'];
+                    final name = partnerMap['displayName'];
+                    
+                    // Check if this partner is in our selected list
+                    final isSelected = _selectedPartners.any((p) => p['uid'] == uid);
+
+                    return FilterChip(
+                      label: Text(name),
+                      selected: isSelected,
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedPartners.add(partnerMap);
+                          } else {
+                            _selectedPartners.removeWhere((p) => p['uid'] == uid);
+                          }
+                        });
+                      },
+                    );
+                  }).toList(),
                 );
-              }).toList(),
+              },
             ),
             const SizedBox(height: 40),
 
@@ -226,37 +257,40 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                   String title = _titleController.text;
                   if (title.isEmpty) title = "My New Goal";
 
-                  List<GoalPartner> wrappedPartners = _selectedPartners.map((p) => GoalPartner(partner: p, hasAcceptedGoal: false)).toList();
+                  // --- NEW: Package the real Firestore relationships! ---
+                  List<String> newSupporterIds = _selectedPartners.map((p) => p['uid'] as String).toList();
+                  Map<String, String> newSupporterStatuses = {};
+                  for (var uid in newSupporterIds) {
+                    newSupporterStatuses[uid] = 'pending'; // Set them all to pending initially!
+                  }
+                  // ------------------------------------------------------
+
                   Goal? createdGoal;
 
                   if (_selectedGoalType == 'Daily') {
-                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, assignedPartners: wrappedPartners, endDate: _dailyEndDate);
+                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, endDate: _dailyEndDate, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
                   } else if (_selectedGoalType == 'Objective') {
-                    // NEW: Package the checkpoints and deadlines!
                     List<Checkpoint> builtCheckpoints = [];
                     for (int i = 0; i < _checkpointControllers.length; i++) {
                       if (_checkpointControllers[i].text.isNotEmpty) {
                         builtCheckpoints.add(Checkpoint(title: _checkpointControllers[i].text, targetDate: _checkpointDeadlines[i]));
                       }
                     }
-                    createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential, assignedPartners: wrappedPartners, targetCompletionDate: _objectiveTargetDate, checkpoints: builtCheckpoints);
+                    createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential, targetCompletionDate: _objectiveTargetDate, checkpoints: builtCheckpoints, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
                   } else if (_selectedGoalType == 'Avoidance') {
-                    createdGoal = AvoidanceGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, assignedPartners: wrappedPartners);
+                    createdGoal = AvoidanceGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
                   } else if (_selectedGoalType == 'Irregular') {
-                    createdGoal = IrregularGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, scheduleType: IrregularScheduleType.specificDays, assignedPartners: wrappedPartners);
+                    createdGoal = IrregularGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, scheduleType: IrregularScheduleType.specificDays, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
                   } else if (_selectedGoalType == 'Cumulative') {
-                    createdGoal = CumulativeGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, targetAmount: 100, assignedPartners: wrappedPartners); 
+                    createdGoal = CumulativeGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, targetAmount: 100, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses); 
                   }
                   
-                  // 1. Grab the currently logged-in user
                   final user = AuthService().currentUser;
                   
-                  // 2. If they are logged in and the goal was built successfully, beam it up!
                   if (user != null && createdGoal != null) {
                     await DatabaseService(userId: user.uid).saveGoal(createdGoal);
                   }
                   
-                  // 3. Return to the main screen
                   if (context.mounted) {
                     Navigator.pop(context, createdGoal); 
                   }
