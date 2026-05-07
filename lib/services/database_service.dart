@@ -21,6 +21,7 @@ class DatabaseService {
       'type': goal.runtimeType.toString(),
       'supporterIds': goal.supporterIds,
       'supporterStatuses': goal.supporterStatuses,
+      'description': goal.description,
     };
 
     // Now we add the specific properties based on what kind of goal it is
@@ -40,9 +41,15 @@ class DatabaseService {
         'targetDate': cp.targetDate != null ? Timestamp.fromDate(cp.targetDate!) : null,
         'completionDate': cp.completionDate != null ? Timestamp.fromDate(cp.completionDate!) : null,
       }).toList();
+    
+    } else if (goal is AvoidanceGoal) {
+      data['failedDates'] = goal.failedDates.map((d) => Timestamp.fromDate(d)).toList();
+      data['generatedCheatDays'] = goal.generatedCheatDays.map((d) => Timestamp.fromDate(d)).toList();
+      data['cheatStrategy'] = goal.cheatStrategy.name;
+      data['hideUpcomingCheatDays'] = goal.hideUpcomingCheatDays;
     }
     
-    // (We will add Avoidance, Irregular, and Cumulative here later!)
+    // (We will add Irregular and Cumulative here later!)
     
     return data;
   }
@@ -65,6 +72,20 @@ class DatabaseService {
     }
   }
 
+  /// Deletes a specific goal from the Cloud
+  Future<void> deleteGoal(String goalId) async {
+    try {
+      await _db
+          .collection('users')
+          .doc(userId)
+          .collection('goals')
+          .doc(goalId)
+          .delete();
+    } catch (e) {
+      print("Error deleting goal: $e");
+    }
+  }
+
   /// 3. THE UN-PACKAGER (Deserialization)
   /// Translates Firestore Maps back into Dart Goal objects
   Goal _goalFromFirestore(DocumentSnapshot doc) {
@@ -73,6 +94,7 @@ class DatabaseService {
     // Extract the universal properties
     String id = data['id'];
     String title = data['title'];
+    String description = data['description'] ?? '';
     DateTime createdAt = (data['createdAt'] as Timestamp).toDate();
     List<String> supporterIds = List<String>.from(data['supporterIds'] ?? []);
     Map<String, String> supporterStatuses = Map<String, String>.from(data['supporterStatuses'] ?? {});
@@ -94,7 +116,7 @@ class DatabaseService {
         completedDates = (data['completedDates'] as List).map((t) => (t as Timestamp).toDate()).toSet();
       }
       
-      return DailyGoal(id: id, title: title, createdAt: createdAt, privacy: privacy, endDate: endDate, completedDates: completedDates, supporterIds: supporterIds, supporterStatuses: supporterStatuses);
+      return DailyGoal(id: id, title: title, createdAt: createdAt, privacy: privacy, endDate: endDate, completedDates: completedDates, supporterIds: supporterIds, supporterStatuses: supporterStatuses, description: description);
       
     } else if (type == 'ObjectiveGoal') {
       DateTime? targetCompletionDate = data['targetCompletionDate'] != null ? (data['targetCompletionDate'] as Timestamp).toDate() : null;
@@ -122,11 +144,42 @@ class DatabaseService {
         checkpoints: checkpoints,
         supporterIds: supporterIds,
         supporterStatuses: supporterStatuses,
+        description: description
+      );
+    
+    } else if (type == 'AvoidanceGoal') {
+      Set<DateTime> failedDates = {};
+      if (data['failedDates'] != null) {
+        failedDates = (data['failedDates'] as List).map((t) => (t as Timestamp).toDate()).toSet();
+      }
+      
+      Set<DateTime> generatedCheatDays = {};
+      if (data['generatedCheatDays'] != null) {
+        generatedCheatDays = (data['generatedCheatDays'] as List).map((t) => (t as Timestamp).toDate()).toSet();
+      }
+
+      CheatDayStrategy cheatStrategy = CheatDayStrategy.values.firstWhere(
+        (e) => e.name == data['cheatStrategy'], 
+        orElse: () => CheatDayStrategy.none
+      );
+
+      return AvoidanceGoal(
+        id: id, 
+        title: title, 
+        description: description, // Make sure you grabbed this at the top of the function!
+        createdAt: createdAt, 
+        privacy: privacy, 
+        failedDates: failedDates,
+        generatedCheatDays: generatedCheatDays,
+        cheatStrategy: cheatStrategy,
+        hideUpcomingCheatDays: data['hideUpcomingCheatDays'] ?? false,
+        supporterIds: supporterIds, 
+        supporterStatuses: supporterStatuses,
       );
     }
     
     // (We will add Avoidance, Irregular, etc. later. Defaulting to Daily for safety)
-    return DailyGoal(id: id, title: title, createdAt: createdAt, supporterIds: supporterIds, supporterStatuses: supporterStatuses);
+    return DailyGoal(id: id, title: title, createdAt: createdAt, supporterIds: supporterIds, supporterStatuses: supporterStatuses, description: description);
   }
 
   /// 4. THE LIVE STREAM

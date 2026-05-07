@@ -14,6 +14,7 @@ class EditGoalScreen extends StatefulWidget {
 
 class _EditGoalScreenState extends State<EditGoalScreen> {
   late TextEditingController _titleController;
+  late TextEditingController _descriptionController;
   late PrivacyLevel _selectedPrivacy;
   List<AccountabilityPartner> _selectedPartners = [];
 
@@ -30,6 +31,7 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.goal.title);
+    _descriptionController = TextEditingController(text: widget.goal.description);
     _selectedPrivacy = widget.goal.privacy;
     _selectedPartners = widget.goal.assignedPartners.map((gp) => gp.partner).toList();
 
@@ -53,6 +55,7 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
   @override
   void dispose() {
     _titleController.dispose();
+    _descriptionController.dispose();
     for (var controller in _checkpointControllers) {
       controller.dispose();
     }
@@ -74,6 +77,14 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
             /// --- 1. UNIVERSAL SETTINGS ---
             const Text("Goal Name", style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(controller: _titleController, decoration: const InputDecoration(border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+
+            const Text("Goal Description (Optional)", style: TextStyle(fontWeight: FontWeight.bold)),
+            TextField(
+              controller: _descriptionController,
+              maxLines: 3, 
+              decoration: const InputDecoration(hintText: "Why is this goal important to you?", border: OutlineInputBorder()),
+            ),
             const SizedBox(height: 16),
 
             const Text("Privacy Level", style: TextStyle(fontWeight: FontWeight.bold)),
@@ -226,6 +237,7 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
               child: ElevatedButton(
                 onPressed: () async {
                   widget.goal.title = _titleController.text;
+                  widget.goal.description = _descriptionController.text;
                   widget.goal.privacy = _selectedPrivacy;
                   widget.goal.assignedPartners = _selectedPartners.map((p) => GoalPartner(partner: p, hasAcceptedGoal: false)).toList();
 

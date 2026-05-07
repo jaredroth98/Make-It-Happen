@@ -13,7 +13,8 @@ class AddGoalScreen extends StatefulWidget {
 
 class _AddGoalScreenState extends State<AddGoalScreen> {
   final _titleController = TextEditingController();
-  String _selectedGoalType = 'Daily'; 
+  final _descriptionController = TextEditingController();
+  String _selectedGoalType = '(Select Goal Type)'; 
   PrivacyLevel _selectedPrivacy = PrivacyLevel.public;
 
   // Accountability Partners
@@ -29,7 +30,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   final List<TextEditingController> _checkpointControllers = [];
   final List<DateTime?> _checkpointDeadlines = [];
 
-  final List<String> _goalTypes = ['Daily', 'Objective', 'Avoidance', 'Irregular', 'Cumulative'];
+  final List<String> _goalTypes = ['(Select Goal Type)', 'Daily', 'Objective', 'Avoidance', 'Irregular', 'Cumulative'];
 
   @override
   void dispose() {
@@ -57,6 +58,14 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(hintText: "e.g., Read 10 Pages", border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 16),
+
+            const Text("Goal Description (Optional)", style: TextStyle(fontWeight: FontWeight.bold)),
+            TextField(
+              controller: _descriptionController,
+              maxLines: 3, // Gives them some room to write!
+              decoration: const InputDecoration(hintText: "Why is this goal important to you?", border: OutlineInputBorder()),
             ),
             const SizedBox(height: 16),
 
@@ -253,11 +262,21 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
               height: 50,
               child: ElevatedButton(
                 onPressed: () async {
+                  // Require goal type selection
+                  if (_selectedGoalType == '(Select Goal Type)') {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Please select a Goal Type!"), 
+                        backgroundColor: Colors.redAccent,
+                      ),
+                    );
+                    return; // This completely stops the save process!
+                  }
                   String newId = DateTime.now().millisecondsSinceEpoch.toString();
                   String title = _titleController.text;
                   if (title.isEmpty) title = "My New Goal";
 
-                  // --- NEW: Package the real Firestore relationships! ---
+                  // --- Package the real Firestore relationships! ---
                   List<String> newSupporterIds = _selectedPartners.map((p) => p['uid'] as String).toList();
                   Map<String, String> newSupporterStatuses = {};
                   for (var uid in newSupporterIds) {
@@ -268,7 +287,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                   Goal? createdGoal;
 
                   if (_selectedGoalType == 'Daily') {
-                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, endDate: _dailyEndDate, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
+                    createdGoal = DailyGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, endDate: _dailyEndDate, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Objective') {
                     List<Checkpoint> builtCheckpoints = [];
                     for (int i = 0; i < _checkpointControllers.length; i++) {
@@ -276,13 +295,13 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                         builtCheckpoints.add(Checkpoint(title: _checkpointControllers[i].text, targetDate: _checkpointDeadlines[i]));
                       }
                     }
-                    createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential, targetCompletionDate: _objectiveTargetDate, checkpoints: builtCheckpoints, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
+                    createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential, targetCompletionDate: _objectiveTargetDate, checkpoints: builtCheckpoints, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Avoidance') {
-                    createdGoal = AvoidanceGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
+                    createdGoal = AvoidanceGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Irregular') {
-                    createdGoal = IrregularGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, scheduleType: IrregularScheduleType.specificDays, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
+                    createdGoal = IrregularGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, scheduleType: IrregularScheduleType.specificDays, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Cumulative') {
-                    createdGoal = CumulativeGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, targetAmount: 100, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses); 
+                    createdGoal = CumulativeGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, targetAmount: 100, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text); 
                   }
                   
                   final user = AuthService().currentUser;

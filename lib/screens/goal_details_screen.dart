@@ -64,8 +64,9 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
   }
 
   void _showToggleDateDialog(DateTime date, DailyGoal dailyGoal) {
-    bool isCompleted = dailyGoal.isCompletedOn(date);
-    String actionText = isCompleted ? "Remove 'Completed' from" : "Mark 'Completed' on";
+    DateTime normalized = DateTime(date.year, date.month, date.day);
+    bool isCompleted = dailyGoal.completedDates.contains(normalized);
+    String actionText = isCompleted ? "Remove 'Completed' from" : "Mark as 'Completed' on";
     String dateStr = "${date.month}/${date.day}/${date.year}";
 
     showDialog(
@@ -74,11 +75,12 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
         title: const Text("Update Log"),
         content: Text("$actionText $dateStr?"),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: const Text("Cancel")
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
           ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isCompleted ? Colors.red : Colors.green, 
+              foregroundColor: Colors.white
+            ),
             onPressed: () async {
               setState(() {
                 if (isCompleted) {
@@ -88,11 +90,47 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                 }
               });
 
+              // Save the change to the Cloud!
               final user = AuthService().currentUser;
               if (user != null) {
                 await DatabaseService(userId: user.uid).saveGoal(dailyGoal);
               }
+              
+              if (context.mounted) Navigator.pop(context);
+            },
+            child: const Text("Confirm"),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  void _showToggleAvoidanceDialog(DateTime date, AvoidanceGoal avoidanceGoal) {
+    DateTime normalized = DateTime(date.year, date.month, date.day);
+    bool isFailed = avoidanceGoal.failedDates.contains(normalized);
+    String actionText = isFailed ? "Remove 'Failed' from" : "Mark as 'Failed' on";
+    String dateStr = "${date.month}/${date.day}/${date.year}";
 
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Update Log"),
+        content: Text("$actionText $dateStr?\n(This will reset your streak!)"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: isFailed ? Colors.green : Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              setState(() {
+                if (isFailed) {
+                  avoidanceGoal.removeFailure(date);
+                } else {
+                  avoidanceGoal.markFailed(date);
+                }
+              });
+
+              final user = AuthService().currentUser;
+              if (user != null) await DatabaseService(userId: user.uid).saveGoal(avoidanceGoal);
               if (context.mounted) Navigator.pop(context);
             },
             child: const Text("Confirm"),
@@ -150,6 +188,13 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
               ],
             ),
             const SizedBox(height: 6),
+
+            if (goal.description.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Text("Description", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+              const SizedBox(height: 4),
+              Text(goal.description, style: const TextStyle(fontSize: 16)),
+            ],
 
             if (goal is DailyGoal && goal.endDate != null)
               Row(
@@ -295,12 +340,13 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
             ],
 
             // --- 4. STREAKS ---
-            if (goal is DailyGoal) ...[
+            if (goal is DailyGoal || goal is AvoidanceGoal) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStatCard("Active Streak", "${goal.activeStreak} Days", Colors.orange),
-                  _buildStatCard("Best Streak", "${_calculateBestStreak(goal.completedDates)} Days", Colors.blue),
+                  _buildStatCard("Active Streak", "${goal is DailyGoal ? goal.activeStreak : (goal as AvoidanceGoal).activeStreak} Days", Colors.orange),
+                  if (goal is DailyGoal) 
+                    _buildStatCard("Best Streak", "${_calculateBestStreak(goal.completedDates)} Days", Colors.blue),
                 ],
               ),
               const SizedBox(height: 24),
@@ -329,6 +375,8 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
 
                     if (goal is DailyGoal) {
                       _showToggleDateDialog(selectedDay, goal);
+                    } else if (goal is AvoidanceGoal) {
+                      _showToggleAvoidanceDialog(selectedDay, goal);
                     }
                     setState(() {
                       _focusedDay = focusedDay;
@@ -377,6 +425,16 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                         }
                       }
 
+                      if (goal is AvoidanceGoal) {
+                        if (goal.failedDates.contains(checkDay)) {
+                          // Show a red dot for failures
+                          return _buildCalendarMarker(day.day.toString(), Colors.red, BoxShape.circle, tooltip: "Failed");
+                        } else if (goal.isCheatDay(checkDay)) {
+                          // Show an orange dot for cheat days!
+                          return _buildCalendarMarker(day.day.toString(), Colors.orangeAccent, BoxShape.circle, tooltip: "Cheat Day");
+                        }
+                      }
+
                       if (goal is CumulativeGoal && goal.deadline != null && isSameDay(goal.deadline!, checkDay)) {
                          return _buildCalendarMarker(day.day.toString(), Colors.redAccent, BoxShape.rectangle, tooltip: "Deadline");
                       }
@@ -387,6 +445,49 @@ class _GoalDetailsScreenState extends State<GoalDetailsScreen> {
                 ),
               ),
             ),
+
+            // --- 6. DELETE BUTTON ---
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.delete_forever),
+                label: const Text("Delete Goal", style: TextStyle(fontSize: 18)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade50,
+                  foregroundColor: Colors.red,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text("Delete Goal?"),
+                      content: const Text("Are you sure you want to delete this goal? This action cannot be undone."),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                          onPressed: () async {
+                            final user = AuthService().currentUser;
+                            if (user != null) {
+                              await DatabaseService(userId: user.uid).deleteGoal(goal.id);
+                            }
+                            if (context.mounted) {
+                              Navigator.pop(context); // Close the dialog
+                              Navigator.pop(context); // Go back to the main goals screen
+                            }
+                          },
+                          child: const Text("Delete"),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 32), // A little extra padding at the bottom
           ],
         ),
       ),

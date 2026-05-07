@@ -16,6 +16,7 @@ class GoalPartner {
 abstract class Goal {
   String id;
   String title;
+  String description;
   DateTime createdAt;
   PrivacyLevel privacy;
   List<GoalPartner> assignedPartners;
@@ -25,6 +26,7 @@ abstract class Goal {
   Goal({
     required this.id,
     required this.title,
+    this.description = '',
     required this.createdAt,
     this.privacy = PrivacyLevel.public,
     this.assignedPartners = const [],
@@ -64,6 +66,7 @@ class ObjectiveGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.description,
     super.privacy,
     super.assignedPartners,
     this.targetCompletionDate,
@@ -104,6 +107,7 @@ class DailyGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.description,
     super.privacy,
     super.assignedPartners,
     Set<DateTime>? completedDates,
@@ -181,6 +185,7 @@ class AvoidanceGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.description,
     super.privacy,
     super.assignedPartners,
     Set<DateTime>? failedDates,
@@ -198,6 +203,10 @@ class AvoidanceGoal extends Goal {
 
   void markFailed(DateTime date) {
     failedDates.add(_normalizeDate(date));
+  }
+
+  void removeFailure(DateTime date) {
+    failedDates.remove(_normalizeDate(date));
   }
 
   bool isCheatDay(DateTime date) {
@@ -219,9 +228,10 @@ class AvoidanceGoal extends Goal {
   int get activeStreak {
     int streak = 0;
     DateTime checkDate = _normalizeDate(DateTime.now());
+    DateTime startDate = _normalizeDate(createdAt); // THE FIX: Know when to stop!
 
-    // Walk backwards. 
-    while (true) {
+    // Only walk backwards until we hit the day the goal was created
+    while (checkDate.isAfter(startDate) || checkDate.isAtSameMomentAs(startDate)) {
       if (isCheatDay(checkDate)) {
         // Streak is frozen. Do not increment, but do not break. Skip to yesterday.
         checkDate = checkDate.subtract(const Duration(days: 1));
@@ -261,6 +271,7 @@ class IrregularGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.description,
     super.privacy,
     super.assignedPartners,
     Set<DateTime>? completedDates,
@@ -311,6 +322,7 @@ class CumulativeGoal extends Goal {
     required super.id,
     required super.title,
     required super.createdAt,
+    super.description,
     super.privacy,
     super.assignedPartners,
     required this.targetAmount,

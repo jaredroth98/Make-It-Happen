@@ -51,6 +51,8 @@ class _GoalsScreenState extends State<GoalsScreen> {
               String? subtitleText;
               if (goal is DailyGoal) {
                 subtitleText = 'Active Streak: ${goal.activeStreak} Days';
+              } else if (goal is AvoidanceGoal) {
+                subtitleText = 'Active Streak: ${goal.activeStreak} Days'; // Added Avoidance!
               } else if (goal is ObjectiveGoal) {
                 if (goal.checkpoints.isEmpty) {
                   subtitleText = null; 
@@ -66,7 +68,9 @@ class _GoalsScreenState extends State<GoalsScreen> {
                 child: ListTile(
                   contentPadding: const EdgeInsets.all(16.0),
                   leading: Icon(
-                    goal is DailyGoal ? Icons.calendar_today : Icons.flag,
+                    goal is DailyGoal ? Icons.calendar_today : 
+                    goal is AvoidanceGoal ? Icons.close : // The big X for Avoidance!
+                    Icons.flag, // Default for Objective, etc.
                     color: Theme.of(context).colorScheme.primary,
                     size: 32,
                   ),
@@ -81,9 +85,22 @@ class _GoalsScreenState extends State<GoalsScreen> {
                           color: completedToday ? Colors.green : Colors.grey,
                           iconSize: 32,
                           onPressed: () async {
-                            // OPTIMISTIC UI: Update the local object immediately
                             completedToday ? goal.removeCompletion(DateTime.now()) : goal.markCompleted(DateTime.now());
-                            // SILENT SYNC: Push the change to the cloud
+                            await DatabaseService(userId: AuthService().currentUser!.uid).saveGoal(goal);
+                          },
+                        );
+                      } else if (goal is AvoidanceGoal) {
+                        // --- NEW AVOIDANCE UI ---
+                        DateTime today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+                        bool failedToday = goal.failedDates.contains(today);
+                        
+                        return IconButton(
+                          // Shows a Shield if safe, a red Cancel if failed
+                          icon: Icon(failedToday ? Icons.cancel : Icons.shield_outlined),
+                          color: failedToday ? Colors.red : Colors.grey,
+                          iconSize: 32,
+                          onPressed: () async {
+                            failedToday ? goal.removeFailure(DateTime.now()) : goal.markFailed(DateTime.now());
                             await DatabaseService(userId: AuthService().currentUser!.uid).saveGoal(goal);
                           },
                         );
