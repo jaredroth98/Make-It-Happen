@@ -3,6 +3,7 @@ import '../models/goal.dart';
 import '../services/database_service.dart';
 import '../services/auth_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 class AddGoalScreen extends StatefulWidget {
   const AddGoalScreen({super.key});
@@ -21,9 +22,16 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
   final List<Map<String, dynamic>> _selectedPartners = [];
 
   // Dynamic States
+  // Daily goals
+  DateTime? _dailyEndDate;
+
+  // Objective goals
   bool _requireSequential = false; 
+
+  // Avoidance goals
   CheatDayStrategy _cheatStrategy = CheatDayStrategy.none; 
-  DateTime? _dailyEndDate; 
+  final Set<DateTime> _manualCheatDays = {};
+  DateTime _avoidanceFocusedDay = DateTime.now();
   
   // NEW: Objective Goal States
   DateTime? _objectiveTargetDate;
@@ -202,6 +210,46 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                 items: CheatDayStrategy.values.map((strategy) => DropdownMenuItem(value: strategy, child: Text(strategy.name))).toList(),
                 onChanged: (newValue) => setState(() => _cheatStrategy = newValue!),
               ),
+              if (_cheatStrategy == CheatDayStrategy.manual) ...[
+                const SizedBox(height: 16),
+                const Text("Select Cheat Days", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: TableCalendar(
+                    // This physically prevents them from clicking past dates!
+                    firstDay: DateTime.now(), 
+                    lastDay: DateTime.now().add(const Duration(days: 365 * 5)), // Let them plan 5 years out
+                    focusedDay: _avoidanceFocusedDay,
+                    
+                    // Highlight the days they've clicked
+                    selectedDayPredicate: (day) => _manualCheatDays.any((d) => isSameDay(d, day)),
+                    
+                    onDaySelected: (selectedDay, focusedDay) {
+                      setState(() {
+                        _avoidanceFocusedDay = focusedDay;
+                        DateTime normalized = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+                        
+                        // Toggle the cheat day on or off
+                        if (_manualCheatDays.contains(normalized)) {
+                          _manualCheatDays.remove(normalized);
+                        } else {
+                          _manualCheatDays.add(normalized);
+                        }
+                      });
+                    },
+                    onPageChanged: (focusedDay) => _avoidanceFocusedDay = focusedDay,
+                    
+                    headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
+                    calendarStyle: const CalendarStyle(
+                      selectedDecoration: BoxDecoration(color: Colors.orangeAccent, shape: BoxShape.circle),
+                      todayDecoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle), // Hide the default blue "today" circle
+                      todayTextStyle: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             const SizedBox(height: 24),
@@ -297,7 +345,7 @@ class _AddGoalScreenState extends State<AddGoalScreen> {
                     }
                     createdGoal = ObjectiveGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, requireSequentialCheckpoints: _requireSequential, targetCompletionDate: _objectiveTargetDate, checkpoints: builtCheckpoints, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Avoidance') {
-                    createdGoal = AvoidanceGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
+                    createdGoal = AvoidanceGoal(id: newId, title: title, description: _descriptionController.text, createdAt: DateTime.now(), privacy: _selectedPrivacy, cheatStrategy: _cheatStrategy, generatedCheatDays: _manualCheatDays, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses);
                   } else if (_selectedGoalType == 'Irregular') {
                     createdGoal = IrregularGoal(id: newId, title: title, createdAt: DateTime.now(), privacy: _selectedPrivacy, scheduleType: IrregularScheduleType.specificDays, supporterIds: newSupporterIds, supporterStatuses: newSupporterStatuses, description: _descriptionController.text);
                   } else if (_selectedGoalType == 'Cumulative') {

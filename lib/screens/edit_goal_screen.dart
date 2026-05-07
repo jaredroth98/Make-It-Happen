@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
 import '../models/goal.dart';
 import '../models/partner.dart';
 import '../services/database_service.dart';
@@ -20,6 +21,8 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
 
   bool _requireSequential = false;
   CheatDayStrategy _cheatStrategy = CheatDayStrategy.none;
+  Set<DateTime> _manualCheatDays = {};
+  DateTime _avoidanceFocusedDay = DateTime.now();
   DateTime? _dailyEndDate; 
   
   // NEW: Objective Goal States
@@ -48,7 +51,9 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
         _checkpointDeadlines.add(cp.targetDate);
       }
     } else if (widget.goal is AvoidanceGoal) {
-      _cheatStrategy = (widget.goal as AvoidanceGoal).cheatStrategy;
+      final avoidGoal = widget.goal as AvoidanceGoal;
+      _cheatStrategy = avoidGoal.cheatStrategy;
+      _manualCheatDays = Set.from(avoidGoal.generatedCheatDays); 
     }
   }
 
@@ -212,6 +217,47 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
               const SizedBox(height: 24),
               const Divider(),
               const SizedBox(height: 16),
+
+              if (_cheatStrategy == CheatDayStrategy.manual) ...[
+                const SizedBox(height: 16),
+                const Text("Select Cheat Days", style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: TableCalendar(
+                    // This physically prevents them from clicking past dates!
+                    firstDay: DateTime.now(), 
+                    lastDay: DateTime.now().add(const Duration(days: 365 * 5)), // Let them plan 5 years out
+                    focusedDay: _avoidanceFocusedDay,
+                    
+                    // Highlight the days they've clicked
+                    selectedDayPredicate: (day) => _manualCheatDays.any((d) => isSameDay(d, day)),
+                    
+                    onDaySelected: (selectedDay, focusedDay) {
+                      setState(() {
+                        _avoidanceFocusedDay = focusedDay;
+                        DateTime normalized = DateTime(selectedDay.year, selectedDay.month, selectedDay.day);
+                        
+                        // Toggle the cheat day on or off
+                        if (_manualCheatDays.contains(normalized)) {
+                          _manualCheatDays.remove(normalized);
+                        } else {
+                          _manualCheatDays.add(normalized);
+                        }
+                      });
+                    },
+                    onPageChanged: (focusedDay) => _avoidanceFocusedDay = focusedDay,
+                    
+                    headerStyle: const HeaderStyle(formatButtonVisible: false, titleCentered: true),
+                    calendarStyle: const CalendarStyle(
+                      selectedDecoration: BoxDecoration(color: Colors.orangeAccent, shape: BoxShape.circle),
+                      todayDecoration: BoxDecoration(color: Colors.transparent, shape: BoxShape.circle), // Hide the default blue "today" circle
+                      todayTextStyle: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
+              ],
             ],
 
             /// --- 3. ACCOUNTABILITY PARTNERS ---
@@ -265,7 +311,9 @@ class _EditGoalScreenState extends State<EditGoalScreen> {
                       }
                     }).toList();
                   } else if (widget.goal is AvoidanceGoal) {
-                    (widget.goal as AvoidanceGoal).cheatStrategy = _cheatStrategy;
+                    final avoidGoal = widget.goal as AvoidanceGoal;
+                    avoidGoal.cheatStrategy = _cheatStrategy;
+                    avoidGoal.generatedCheatDays = _manualCheatDays; // Save the new list!
                   }
 
                   final user = AuthService().currentUser;
